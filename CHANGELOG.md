@@ -6,8 +6,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Versioning foll
 ## [Unreleased]
 
 ### Added
-- GitHub 仓库结构：每日工作日志、三台电脑 Cursor 同步指南、版本号 `VERSION`
-- 待推送：首次远程仓库创建
+- End-of-day automation: say 「收工」→ Agent writes `docs/daily-logs/*.md`, commits, pushes
+- `.cursor/rules/daily-log-workflow.mdc`, `scripts/end-of-day.sh`
 
 ## [0.1.0] - 2026-08-15
 

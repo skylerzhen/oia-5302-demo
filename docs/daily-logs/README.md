@@ -4,9 +4,20 @@
 
 ## 怎么用
 
-1. **每天结束** 在 Cursor 里告诉 AI：「写今天的工作日志」
-2. AI 会在此目录新增 `YYYY-MM-DD.md`
-3. 你 `git add` → `commit` → `push` 后，另外两台电脑 `git pull` 即可同步
+**你只需要每天对 Cursor 说一个字：**
+
+> **收工**
+
+AI 会自动：看今天改了什么 → 写 `docs/daily-logs/YYYY-MM-DD.md` → commit → push GitHub。  
+另外两台电脑 `git pull` 即可。
+
+也可说：「写日志」「今天结束了」「daily log」
+
+### 手动备用（AI 已写日志后）
+
+```bash
+./scripts/end-of-day.sh
+```
 
 ## 文件命名
 

@@ -44,17 +44,16 @@ git clone https://github.com/YOUR_USERNAME/oia-5302-demo.git
 
 ## 每天工作流
 
+**收工时对 Cursor 说「收工」** — AI 自动写日志、commit、push。
+
 ```bash
 # 开始一天
 git pull origin main
 
 # ... 在 Cursor 里开发 ...
 
-# 结束一天（你对 AI 说「写今天的工作日志」）
-git add docs/daily-logs/ CHANGELOG.md VERSION
-git add -A   # 或只 add 改过的文件
-git commit -m "docs: daily log 2026-08-15 + ..."
-git push origin main
+# 收工：对 Cursor 说「收工」
+# 或手动：./scripts/end-of-day.sh
 ```
 
 另一台电脑：
@@ -69,6 +68,7 @@ git pull origin main
 
 ```
 .cursor/rules/oia-5302-project.mdc
+.cursor/rules/daily-log-workflow.mdc   ← 收工自动流程
 ```
 
 三台电脑 **clone 同一仓库** 后，Cursor 会自动读取项目内规则（与全局 `~/.cursor/rules` 互补）。
@@ -117,6 +117,6 @@ A: 尽量不同机同时改同一文件；冲突时 `git pull` → 解决冲突 
 
 ## 每日日志命令（对 Cursor 说）
 
-> 写今天的工作日志
+> **收工**
 
-AI 会在 `docs/daily-logs/YYYY-MM-DD.md` 追加/创建文件，你 review 后 commit push 即可。
+（也可以说：写日志、今天结束了、daily log）

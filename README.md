@@ -59,6 +59,7 @@ git push origin main
 ## 每日工作日志
 
 - 目录：[docs/daily-logs/](./docs/daily-logs/)
+- **收工时对 Cursor 说「收工」** — AI 自动写日志 + commit + push
 - 索引：[docs/daily-logs/README.md](./docs/daily-logs/README.md)
 
 ## 文档索引

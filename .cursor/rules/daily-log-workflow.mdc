@@ -1,0 +1,53 @@
+---
+description: End-of-day workflow — user says 收工/写日志 and agent writes daily log + git commit/push
+alwaysApply: true
+---
+
+# 每日收工流程（Agent 自动执行）
+
+当用户说以下**任意一句**时，**不要只解释**，立即执行完整收工流程：
+
+- 「收工」「写日志」「写今天的工作日志」「今天结束了」
+- 「daily log」「end of day」「同步 github」
+
+## 你必须做的事（按顺序）
+
+1. **看今天改了什么**
+   - `git status`、`git diff`（必要时 `git log`）
+   - 回顾本会话 / 当天用户让做的事
+
+2. **写或更新当日日志**
+   - 路径：`docs/daily-logs/YYYY-MM-DD.md`（用当天日期，UTC+8）
+   - 若文件已存在则**追加**「晚间更新」小节，不要覆盖上午内容
+   - 必须包含：今日目标、完成事项、代码/文档变更、问题与解决、明日计划
+   - 更新 `docs/daily-logs/README.md` 索引表（若该日尚未列入）
+
+3. **更新 CHANGELOG**（若有用户可见的功能/fix）
+   - 在 `[Unreleased]` 下追加条目；重大里程碑才 bump `VERSION`
+
+4. **Git 提交并推送**
+   ```bash
+   git add docs/daily-logs/ CHANGELOG.md VERSION
+   git add -A   # 含当日代码改动
+   git commit -m "docs: daily log YYYY-MM-DD (+ changes summary)"
+   git push origin main
+   ```
+   - 若 remote 未配置：提示用户运行 `./scripts/github-setup.sh`，但**仍完成本地 commit**
+   - 若 push 失败：说明原因，保留本地 commit，给出一条可复制的修复命令
+
+5. **回复用户（简短）**
+   - 今天做了什么（3–5 条 bullet）
+   - 日志文件路径
+   - push 是否成功；另一台电脑只需 `git pull`
+
+## 用户只需要记一句
+
+> **「收工」**
+
+其余全部由 Agent 完成。不要要求用户自己写 markdown 或记 git 命令。
+
+## 禁止
+
+- 不要只告诉用户「你应该去写日志」而不动手写
+- 不要跳过 commit（除非用户明确说「只写日志不提交」）
+- 不要 commit `.env`、密钥、`node_modules`
