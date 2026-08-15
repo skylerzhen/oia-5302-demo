@@ -1,35 +1,42 @@
 # OIA 5302 Local AI Adapter Contract
 
-The browser calls same-origin relative endpoints only. This keeps the UI
-compatible with the offline Content Security Policy and prevents cloud fallback.
+The browser calls same-origin relative endpoints only.
 
-The localhost delivery server currently provides explicit
-`adapter-fallback` responses so the workflow remains reproducible before GPU
-models are installed. Those responses are **not** a claim that OCR, LLM, ASR
-or TTS models are running.
+## Demo v3 (8/17)
 
-## Required replacement endpoints
+For the evaluation demo, run the cloud LLM API locally:
 
-| Route | Input | Required model behaviour |
-|---|---|---|
-| `POST /api/local-ai/ocr/parse-cv` | filename and scan flag | Local PDF/DOCX/image extraction, field confidence and evidence location |
-| `POST /api/local-ai/llm/follow-up` | answer and language | Follow-up must quote or refer to the submitted answer |
-| `POST /api/local-ai/asr/transcribe` | local audio reference | EN/AR transcript with timestamps |
-| `POST /api/local-ai/tts/synthesize` | text and language | Return local speech output and phoneme timing |
-| `GET /api/local-ai/status` | none | Declare `model` only when all approved local services are available |
+```bash
+cp llm.env.example llm.env   # then edit llm.env in the sidebar
+npm run dev
+```
 
-## Integration rules
+Provider switch (no code change):
 
-1. Bind the service to localhost or the air-gapped private network only.
-2. Do not add a cloud fallback, remote telemetry, CDN model download or remote
-   API key.
-3. Preserve the JSON response shape implemented in `src/lib/localAi.ts`.
-4. Return a `mode` of `model` only for a real approved local model invocation.
-5. Save model logs and network-monitor output as Gate 1 evidence.
+```bash
+# DeepSeek (current default)
+LLM_PROVIDER=deepseek
+DEEPSEEK_API_KEY=...
 
-## Current browser flow
+# OpenAI (when tech lead approves)
+LLM_PROVIDER=openai
+OPENAI_API_KEY=...
+LLM_MODEL=gpt-4o
+LLM_MODEL_FAST=gpt-4o-mini
+```
 
-- C1 invokes OCR adapter after a controlled CV input is selected.
-- C4 invokes LLM adapter after each candidate answer.
-- ASR/TTS routes are defined but await local microphone and speech-model
-  integration.
+Routes:
+
+| Route | Purpose |
+|---|---|
+| `GET /api/local-ai/status` | LLM availability + provider |
+| `POST /api/local-ai/ocr/parse-cv` | CV → structured fields |
+| `POST /api/local-ai/llm/generate-question` | Opening / Arabic question |
+| `POST /api/local-ai/llm/follow-up` | Answer-aware follow-up |
+| `POST /api/local-ai/llm/generate-assessment` | H3 evaluation report |
+
+Voice (ASR/TTS/viseme) routes are defined in the frontend but not yet implemented.
+
+## Production target
+
+Bind services to localhost or the air-gapped private network only. Do not expose API keys in the browser bundle.

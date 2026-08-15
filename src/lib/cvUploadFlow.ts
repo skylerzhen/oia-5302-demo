@@ -1,4 +1,4 @@
-import { getCvParseProfile, resolveSampleProfileId, type CvParseFieldResult } from '../data/cvParseProfiles'
+import { resolveSampleProfileId, type CvParseFieldResult } from '../data/cvParseProfiles'
 import { localAi, type CvParseResult } from './localAi'
 
 export type CvUploadStage = 'idle' | 'reading' | 'uploading' | 'parsing' | 'mapping' | 'done' | 'error'
@@ -81,12 +81,6 @@ async function readLocalFile(file: File, onProgress: (p: CvUploadProgress) => vo
   }
 }
 
-function profileFields(sampleId: string): CvParseFieldResult[] {
-  const profile = getCvParseProfile(sampleId)
-  if (!profile) throw new Error(`No parse profile for sample ${sampleId}`)
-  return profile.fields
-}
-
 async function parseWithAdapter(input: {
   sampleId: string
   fileName: string
@@ -94,14 +88,7 @@ async function parseWithAdapter(input: {
   fileType: string
   isArabicScan: boolean
 }): Promise<CvParseResult> {
-  try {
-    return await localAi.parseCv(input)
-  } catch {
-    return {
-      mode: 'adapter-fallback',
-      fields: profileFields(input.sampleId),
-    }
-  }
+  return localAi.parseCv(input)
 }
 
 export async function runCvUploadFlow(
@@ -109,15 +96,14 @@ export async function runCvUploadFlow(
   onProgress: (progress: CvUploadProgress) => void,
 ): Promise<CvUploadResult> {
   const sampleId = input.sampleId ?? resolveSampleProfileId(input.fileName) ?? 'pdf-en'
-  const profile = getCvParseProfile(sampleId)
-  const isArabicScan = input.isArabicScan ?? profile?.isArabicScan ?? false
+  const isArabicScan = input.isArabicScan ?? sampleId === 'pdf-ar-scan'
 
   try {
     onProgress({ stage: 'reading', progress: 4, message: 'Preparing upload…' })
 
     const loaded = input.file
       ? await readLocalFile(input.file, onProgress)
-      : await readControlledSample(input.filePath ?? `/issue-5302-inputs/${profile?.fileName ?? input.fileName}`, onProgress)
+      : await readControlledSample(input.filePath ?? `/issue-5302-inputs/${input.fileName}`, onProgress)
 
     onProgress({ stage: 'uploading', progress: 42, message: 'Uploading to local document parser…' })
     await wait(550)
@@ -144,7 +130,10 @@ export async function runCvUploadFlow(
     onProgress({ stage: 'mapping', progress: 90, message: 'Mapping extracted fields to profile…' })
     await wait(350)
 
-    const fields = parsed.fields.length > 0 ? parsed.fields : profileFields(sampleId)
+    if (parsed.fields.length === 0) {
+      throw new Error('LLM returned no parsed CV fields')
+    }
+    const fields = parsed.fields
 
     onProgress({ stage: 'done', progress: 100, message: 'Upload and parse complete' })
 

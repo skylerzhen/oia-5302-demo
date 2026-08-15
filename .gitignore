@@ -21,6 +21,8 @@ dist-ssr
 # Secrets — never commit
 .env
 .env.*
+!.env.example
+llm.env
 *.pem
 credentials.json
 

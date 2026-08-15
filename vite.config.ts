@@ -7,4 +7,12 @@ export default defineConfig({
   preview: {
     allowedHosts: true,
   },
+  server: {
+    proxy: {
+      '/api/local-ai': {
+        target: 'http://127.0.0.1:8787',
+        changeOrigin: true,
+      },
+    },
+  },
 })

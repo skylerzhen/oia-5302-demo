@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: oia-5302-llm-api
+    runtime: node
+    buildCommand: echo "LLM API — no build step"
+    startCommand: node server/index.mjs
+    healthCheckPath: /api/local-ai/status
+    envVars:
+      - key: LLM_PROVIDER
+        value: deepseek
+      - key: LLM_MODEL
+        value: deepseek-chat
+      - key: LLM_MODEL_FAST
+        value: deepseek-chat
+      - key: DEEPSEEK_API_KEY
+        sync: false

@@ -437,6 +437,11 @@ textarea {
   font-size: 0.9rem;
 }
 
+.danger-text {
+  color: #b91c1c;
+  font-size: 0.9rem;
+}
+
 .data-table {
   width: 100%;
   border-collapse: collapse;

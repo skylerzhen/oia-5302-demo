@@ -11,16 +11,13 @@ import {
   PRIMARY_CANDIDATE_ID,
 } from '../data/candidates'
 import { FINANCE_JOB } from '../data/job'
-import { INTERVIEW_PRESET, MCQ_QUESTIONS } from '../data/questions'
+import { MCQ_QUESTIONS } from '../data/questions'
 import { CANDIDATE_STEPS } from '../lib/demo'
 import { localAi } from '../lib/localAi'
 import { controlledViewUrl } from '../lib/controlledDocUrl'
 import { applyParsedFields, runCvUploadFlow, type CvUploadProgress } from '../lib/cvUploadFlow'
 import {
-  buildArabicFollowUp,
-  buildArabicInterviewPrompt,
   buildImprovementTips,
-  buildInterviewFollowUp,
   getInterviewUiPhase,
   getMatchById,
 } from '../lib/matching'
@@ -56,6 +53,8 @@ export function CandidatePortal() {
   const [avatarExpression, setAvatarExpression] = useState<'neutral' | 'supportive' | 'curious' | 'gesture'>('neutral')
   const [supportivePrompt, setSupportivePrompt] = useState('')
   const [localAiMode, setLocalAiMode] = useState<'model' | 'adapter-fallback' | 'unavailable'>('unavailable')
+  const [llmBusy, setLlmBusy] = useState(false)
+  const [llmError, setLlmError] = useState('')
   const [scanImported, setScanImported] = useState(false)
   const [reviewReady, setReviewReady] = useState(false)
   const [uploadBusy, setUploadBusy] = useState(false)
@@ -72,11 +71,10 @@ export function CandidatePortal() {
   }, [examStartedAt, examSubmitted, step])
 
   useEffect(() => {
-    if (step !== 'C4') return
     localAi.status()
       .then((status) => setLocalAiMode(status.mode))
       .catch(() => setLocalAiMode('unavailable'))
-  }, [step])
+  }, [])
 
   async function processCvUpload(input: {
     sampleId: string
@@ -103,7 +101,7 @@ export function CandidatePortal() {
       setUploadedSamples((current) => [...current, input.sampleId])
       setFields((prev) => applyParsedFields(prev, result.fields))
       setScanImported(result.isArabicScan)
-      log('System', 'Local OCR adapter invoked', `${result.fileName}; ${result.fileSize} bytes; mode: ${result.mode}`, 'C1')
+      log('System', 'LLM CV parsing invoked', `${result.fileName}; ${result.fileSize} bytes; mode: ${result.mode}`, 'C1')
       if (result.isArabicScan) {
         log('Candidate', 'Arabic scanned CV uploaded', `${result.fileName}; education requires review`, 'C1')
       } else {
@@ -127,6 +125,49 @@ export function CandidatePortal() {
     const isArabicScan = normalized.includes('arabic') || normalized.includes('noor') || normalized.includes('scan')
     const sampleId = isArabicScan ? 'pdf-ar-scan' : normalized.endsWith('.docx') ? 'docx-en' : `local-${file.name}`
     void processCvUpload({ sampleId, label: file.name, file, isArabicScan })
+  }
+
+  function candidateProfileInput() {
+    return Object.fromEntries(fields.map((field) => [field.key, field.value]))
+  }
+
+  async function generateAvatarQuestion(language: 'en' | 'ar', purpose: 'opening' | 'arabic-segment') {
+    const result = await localAi.generateQuestion({
+      language,
+      purpose,
+      candidateProfile: candidateProfileInput(),
+    })
+    setLocalAiMode(result.mode)
+    return result.text
+  }
+
+  async function generateAvatarFollowUp(answer: string, language: 'en' | 'ar', priorTurns = interviewTurns) {
+    const result = await localAi.followUp({
+      answer,
+      language,
+      priorTurns: priorTurns.map((turn) => ({
+        speaker: turn.speaker,
+        language: turn.language,
+        text: turn.text,
+      })),
+    })
+    setLocalAiMode(result.mode)
+    log('System', 'LLM follow-up generated', `Mode: ${result.mode}; evidence: ${result.evidencePhrase}`, 'C4')
+    return result.text
+  }
+
+  async function runLlmInterviewAction(action: () => Promise<void>) {
+    setLlmError('')
+    setLlmBusy(true)
+    try {
+      await action()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'LLM request failed'
+      setLlmError(message)
+      log('System', 'LLM request failed', message, 'C4')
+    } finally {
+      setLlmBusy(false)
+    }
   }
 
   function nextTurnId(prefix: string) {
@@ -478,7 +519,7 @@ export function CandidatePortal() {
             <section className="stack">
               <header className="section-head">
                 <h1>C4 · AI avatar interview</h1>
-                <p>Candidate-only session · HR reviews recording separately · Local AI: <strong>{localAiMode}</strong></p>
+                <p>Candidate-only session · HR reviews recording separately · LLM: <strong>{localAiMode}</strong></p>
               </header>
               <div className="interview-steps card">
                 <span className={interviewPhase !== 'idle' ? 'done' : 'active'}>1. English Q&amp;A</span>
@@ -489,10 +530,13 @@ export function CandidatePortal() {
                 <AvatarPanel speaking={avatarSpeaking} language={avatarLanguage} expression={avatarExpression} caption={avatarCaption || 'Start when ready'} />
                 <div className="card stack">
                   {!interviewStarted ? (
-                    <button type="button" className="primary" onClick={async () => {
-                      setInterviewStarted(true)
-                      await speakAvatar({ id: nextTurnId('g'), speaker: 'avatar', language: 'en', text: INTERVIEW_PRESET[0].text, expression: 'gesture' })
-                    }}><Play size={16} /> Start interview</button>
+                    <button type="button" className="primary" disabled={llmBusy} onClick={() => {
+                      void runLlmInterviewAction(async () => {
+                        setInterviewStarted(true)
+                        const openingQuestion = await generateAvatarQuestion('en', 'opening')
+                        await speakAvatar({ id: nextTurnId('g'), speaker: 'avatar', language: 'en', text: openingQuestion, expression: 'gesture' })
+                      })
+                    }}><Play size={16} /> {llmBusy ? 'Generating opening question…' : 'Start interview'}</button>
                   ) : (
                     <>
                       <div className="transcript">
@@ -502,6 +546,7 @@ export function CandidatePortal() {
                           </div>
                         ))}
                       </div>
+                      {llmError && <p className="danger-text">{llmError}</p>}
                       {avatarSpeaking && (
                         <button type="button" className="danger" onClick={interruptAvatar}>
                           Interrupt avatar
@@ -516,30 +561,29 @@ export function CandidatePortal() {
                             I need a moment (3-second supportive response)
                           </button>
                           {supportivePrompt && <p className="muted tiny">{supportivePrompt}</p>}
-                          <button type="button" className="primary" disabled={!candidateAnswerEn.trim() || avatarSpeaking} onClick={async () => {
+                          <button type="button" className="primary" disabled={!candidateAnswerEn.trim() || avatarSpeaking || llmBusy} onClick={() => {
                             const ans = candidateAnswerEn.trim()
-                            setInterviewTurns((p) => [...p, { id: nextTurnId('c-en'), speaker: 'candidate', language: 'en', text: ans }])
-                            setCandidateAnswerEn('')
-                            const enRound = interviewTurns.filter((t) => t.speaker === 'candidate' && t.language === 'en').length
-                            let followUp = buildInterviewFollowUp(ans, enRound)
-                            try {
-                              const result = await localAi.followUp(ans, 'en')
-                              followUp = result.text
-                              log('System', 'Local LLM follow-up invoked', `Mode: ${result.mode}; evidence: ${result.evidencePhrase}`, 'C4')
-                            } catch {
-                              log('System', 'Local LLM adapter unavailable', 'Using deterministic dynamic-follow-up fallback', 'C4')
-                            }
-                            await speakAvatar({ id: nextTurnId('fu'), speaker: 'avatar', language: 'en', text: followUp, expression: 'curious' })
-                          }}>Send English answer</button>
+                            void runLlmInterviewAction(async () => {
+                              const candidateTurn = { id: nextTurnId('c-en'), speaker: 'candidate' as const, language: 'en' as const, text: ans }
+                              const updatedTurns = [...interviewTurns, candidateTurn]
+                              setInterviewTurns(updatedTurns)
+                              setCandidateAnswerEn('')
+                              const followUp = await generateAvatarFollowUp(ans, 'en', updatedTurns)
+                              await speakAvatar({ id: nextTurnId('fu'), speaker: 'avatar', language: 'en', text: followUp, expression: 'curious' })
+                            })
+                          }}>{llmBusy ? 'Generating follow-up…' : 'Send English answer'}</button>
                         </div>
                       )}
 
                       {interviewPhase === 'english_done' && (
                         <div className="stack">
                           <p className="ok-text">English segment complete. Continue to the required Arabic question.</p>
-                          <button type="button" className="primary" disabled={avatarSpeaking} onClick={async () => {
-                            await speakAvatar({ id: nextTurnId('ar-q'), speaker: 'avatar', language: 'ar', text: buildArabicInterviewPrompt(), expression: 'neutral' })
-                          }}>Continue to Arabic segment →</button>
+                          <button type="button" className="primary" disabled={avatarSpeaking || llmBusy} onClick={() => {
+                            void runLlmInterviewAction(async () => {
+                              const arabicQuestion = await generateAvatarQuestion('ar', 'arabic-segment')
+                              await speakAvatar({ id: nextTurnId('ar-q'), speaker: 'avatar', language: 'ar', text: arabicQuestion, expression: 'neutral' })
+                            })
+                          }}>{llmBusy ? 'Generating Arabic question…' : 'Continue to Arabic segment →'}</button>
                         </div>
                       )}
 
@@ -547,20 +591,17 @@ export function CandidatePortal() {
                         <div className="stack">
                           <p className="muted tiny">Step 2/3 · Answer in Arabic to finish the interview.</p>
                           <textarea dir="rtl" value={candidateAnswerAr} onChange={(e) => setCandidateAnswerAr(e.target.value)} placeholder="إجابتكم بالعربية..." />
-                          <button type="button" className="primary" disabled={!candidateAnswerAr.trim() || avatarSpeaking} onClick={async () => {
+                          <button type="button" className="primary" disabled={!candidateAnswerAr.trim() || avatarSpeaking || llmBusy} onClick={() => {
                             const ans = candidateAnswerAr.trim()
-                            setInterviewTurns((p) => [...p, { id: nextTurnId('c-ar'), speaker: 'candidate', language: 'ar', text: ans }])
-                            setCandidateAnswerAr('')
-                            let followUp = buildArabicFollowUp()
-                            try {
-                              const result = await localAi.followUp(ans, 'ar')
-                              followUp = result.text
-                              log('System', 'Local LLM follow-up invoked', `Mode: ${result.mode}; evidence: ${result.evidencePhrase}`, 'C4')
-                            } catch {
-                              log('System', 'Local LLM adapter unavailable', 'Using deterministic Arabic follow-up fallback', 'C4')
-                            }
-                            await speakAvatar({ id: nextTurnId('fu-ar'), speaker: 'avatar', language: 'ar', text: followUp, expression: 'supportive' })
-                          }}>Send Arabic answer</button>
+                            void runLlmInterviewAction(async () => {
+                              const candidateTurn = { id: nextTurnId('c-ar'), speaker: 'candidate' as const, language: 'ar' as const, text: ans }
+                              const updatedTurns = [...interviewTurns, candidateTurn]
+                              setInterviewTurns(updatedTurns)
+                              setCandidateAnswerAr('')
+                              const followUp = await generateAvatarFollowUp(ans, 'ar', updatedTurns)
+                              await speakAvatar({ id: nextTurnId('fu-ar'), speaker: 'avatar', language: 'ar', text: followUp, expression: 'supportive' })
+                            })
+                          }}>{llmBusy ? 'Generating follow-up…' : 'Send Arabic answer'}</button>
                         </div>
                       )}
 

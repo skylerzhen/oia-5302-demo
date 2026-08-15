@@ -11,7 +11,7 @@ import { PRIMARY_CANDIDATE_ID } from '../data/candidates'
 import { FINANCE_JOB } from '../data/job'
 import { formatAuditTime } from '../lib/audit'
 import { HR_STEPS } from '../lib/demo'
-import { buildInterviewEvaluationReport } from '../lib/interviewReport'
+import { localAi, type AssessmentResult } from '../lib/localAi'
 import { getMatchById, rankCandidates } from '../lib/matching'
 import type { HrStepId } from '../types'
 
@@ -32,6 +32,9 @@ export function HrPortal() {
   const [evidenceModal, setEvidenceModal] = useState<{ title: string; evidence: string; source?: string } | null>(null)
   const [sourceDoc, setSourceDoc] = useState<{ title: string; url: string } | null>(null)
   const [decisionType, setDecisionType] = useState<'hire' | 'reject' | null>(pipeline.finalDecisionType)
+  const [interviewReport, setInterviewReport] = useState<AssessmentResult | null>(null)
+  const [assessmentLoading, setAssessmentLoading] = useState(false)
+  const [assessmentError, setAssessmentError] = useState('')
 
   const matches = useMemo(() => rankCandidates(), [])
   const filtered = matches.filter((m) => {
@@ -43,10 +46,39 @@ export function HrPortal() {
 
   const selected = getMatchById(selectedId) ?? matches[0]
   const readyForInterviewReview = pipeline.interviewCompleted || interviewTurns.length > 0
-  const interviewReport = useMemo(
-    () => buildInterviewEvaluationReport(interviewTurns, selected, assessmentScore),
-    [assessmentScore, interviewTurns, selected],
-  )
+
+  useEffect(() => {
+    if (!readyForInterviewReview || interviewTurns.length === 0) {
+      setInterviewReport(null)
+      return
+    }
+
+    let active = true
+    setAssessmentLoading(true)
+    setAssessmentError('')
+    localAi.generateAssessment({
+      turns: interviewTurns,
+      assessmentScore,
+      matchScore: selected.totalScore,
+      jobTitle: FINANCE_JOB.title,
+    })
+      .then((report) => {
+        if (!active) return
+        setInterviewReport(report)
+        log('System', 'LLM interview assessment generated', `${report.dimensions.length} dimensions · mode ${report.mode}`, 'H3')
+      })
+      .catch((error: Error) => {
+        if (!active) return
+        setAssessmentError(error.message)
+        setInterviewReport(null)
+        log('System', 'LLM assessment failed', error.message, 'H3')
+      })
+      .finally(() => {
+        if (active) setAssessmentLoading(false)
+      })
+
+    return () => { active = false }
+  }, [assessmentScore, interviewTurns, log, readyForInterviewReview, selected.totalScore])
 
   useEffect(() => {
     if (!readyForInterviewReview) {
@@ -195,7 +227,9 @@ export function HrPortal() {
             <div className="kpi-card"><span>Status</span><strong className="kpi-small">{pipeline.shortlisted ? 'Shortlisted' : 'Pending'}</strong></div>
           </div>
           <InterviewReviewPanel turns={interviewTurns} />
-          <EvaluationReportPanel report={interviewReport} />
+          {assessmentLoading && <p className="muted">Generating LLM assessment from interview transcript…</p>}
+          {assessmentError && <p className="danger-text">{assessmentError}</p>}
+          {interviewReport && <EvaluationReportPanel report={interviewReport} />}
           <button type="button" className="primary" onClick={proceedToFinalDecision}>
             {pipeline.shortlisted ? 'Proceed to final decision →' : 'Go to shortlist decision →'}
           </button>
@@ -209,8 +243,8 @@ export function HrPortal() {
 
           <div className="ai-rec-card">
             <span className="ai-label">AI recommendation</span>
-            <strong>Hire — proceed to offer stage</strong>
-            <p>Based on {selected.totalScore}% match · {assessmentScore}% assessment · strong bilingual interview.</p>
+            <strong>{interviewReport?.recommendation ?? (assessmentLoading ? 'Generating LLM recommendation…' : 'Complete C4 interview to generate recommendation')}</strong>
+            <p>Based on {selected.totalScore}% match · {assessmentScore}% assessment · evidence-linked interview review.</p>
           </div>
 
           <div className="decision-toggle">
