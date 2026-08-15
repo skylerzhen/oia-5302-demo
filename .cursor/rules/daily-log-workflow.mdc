@@ -12,14 +12,19 @@ alwaysApply: true
 
 ## 你必须做的事（按顺序）
 
-1. **看今天改了什么**
+1. **同步对话进度 + 看代码变更**
+   - 运行 `npm run progress:sync`（更新 `docs/progress/cursor-transcript-index.md`）
+   - 阅读 `docs/progress/conversation-history.md` 与当日索引
+   - 必要时读 `~/.cursor/projects/.../agent-transcripts/*.jsonl` 补全上下文
    - `git status`、`git diff`（必要时 `git log`）
-   - 回顾本会话 / 当天用户让做的事
 
 2. **写或更新当日日志**
    - 路径：`docs/daily-logs/YYYY-MM-DD.md`（用当天日期，UTC+8）
    - 若文件已存在则**追加**「晚间更新」小节，不要覆盖上午内容
-   - 必须包含：今日目标、完成事项、代码/文档变更、问题与解决、明日计划
+   - 必须包含：
+     - 今日目标、完成事项、代码/文档变更、问题与解决、明日计划
+     - **`## Cursor 对话摘要`**：今天对话里的需求、决策、阻塞、用户原话要点（不是只写代码）
+   - 若有关键里程碑，同步更新 `docs/progress/conversation-history.md` 对应日期小节
    - 更新 `docs/daily-logs/README.md` 索引表（若该日尚未列入）
 
 3. **更新 CHANGELOG**（若有用户可见的功能/fix）
@@ -27,7 +32,7 @@ alwaysApply: true
 
 4. **Git 提交并推送**
    ```bash
-   git add docs/daily-logs/ CHANGELOG.md VERSION
+   git add docs/daily-logs/ docs/progress/ CHANGELOG.md VERSION
    git add -A   # 含当日代码改动
    git commit -m "docs: daily log YYYY-MM-DD (+ changes summary)"
    git push origin main

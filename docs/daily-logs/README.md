@@ -8,10 +8,12 @@
 
 > **收工**
 
-AI 会自动：看今天改了什么 → 写 `docs/daily-logs/YYYY-MM-DD.md` → commit → push GitHub。  
-另外两台电脑 `git pull` 即可。
+AI 会自动：**同步对话索引** → 写 markdown 日志（含 **Cursor 对话摘要**）→ commit → push GitHub。  
+另外两台电脑 `git pull` 即可恢复代码 **和** 进度上下文。
 
 也可说：「写日志」「今天结束了」「daily log」
+
+详见 [docs/progress/README.md](../progress/README.md)
 
 ### 手动备用（AI 已写日志后）
 

@@ -13,9 +13,12 @@ echo ""
 
 if [[ ! -f "$LOG" ]]; then
   echo "⚠ Daily log not found: $LOG"
-  echo "  Ask Cursor: 写今天的工作日志"
+  echo "  Ask Cursor: 收工"
   exit 1
 fi
+
+echo "Syncing Cursor conversation index..."
+npm run progress:sync 2>/dev/null || node scripts/sync-conversation-progress.mjs || true
 
 echo "Daily log: $LOG"
 echo ""
@@ -26,7 +29,7 @@ echo ""
 if git diff --quiet && git diff --cached --quiet; then
   echo "Nothing to commit."
 else
-  git add docs/daily-logs/ CHANGELOG.md VERSION 2>/dev/null || true
+  git add docs/daily-logs/ docs/progress/ CHANGELOG.md VERSION 2>/dev/null || true
   git add -A
   git commit -m "docs: daily log ${DATE}" || true
 fi

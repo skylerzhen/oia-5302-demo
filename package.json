@@ -21,6 +21,7 @@
     "demo:documents": "node scripts/generate-demo-documents.mjs",
     "demo:documents:publish": "npm run demo:documents && node scripts/sync-issue-inputs.mjs && node scripts/generate-controlled-html.mjs",
     "demo:monitor": "node scripts/offline-monitor.mjs",
+    "progress:sync": "node scripts/sync-conversation-progress.mjs",
     "pdf:narration:en": "node scripts/generate-narration-pdf.mjs",
     "lint": "oxlint",
     "preview": "vite preview"
