@@ -1,0 +1,120 @@
+{
+  "method": "whisper_content_anchors",
+  "source": "/Users/admin/Downloads/oia-5302-demo/video-output/voiceover.m4a",
+  "totalSec": 265.2,
+  "segments": [
+    {
+      "id": "01-open",
+      "start": 0,
+      "end": 32.16,
+      "duration": 32.16
+    },
+    {
+      "id": "02-s0",
+      "start": 32.16,
+      "end": 46.88,
+      "duration": 14.720000000000006
+    },
+    {
+      "id": "03-c1",
+      "start": 46.88,
+      "end": 70.56,
+      "duration": 23.68
+    },
+    {
+      "id": "04-c2",
+      "start": 70.56,
+      "end": 89.6,
+      "duration": 19.039999999999992
+    },
+    {
+      "id": "05-c3",
+      "start": 89.6,
+      "end": 106.88,
+      "duration": 17.28
+    },
+    {
+      "id": "06-c4",
+      "start": 106.88,
+      "end": 140.79999999999998,
+      "duration": 33.91999999999999
+    },
+    {
+      "id": "07-c56",
+      "start": 140.79999999999998,
+      "end": 151.76,
+      "duration": 10.960000000000008
+    },
+    {
+      "id": "08-h1",
+      "start": 151.76,
+      "end": 190.4,
+      "duration": 38.640000000000015
+    },
+    {
+      "id": "09-h2",
+      "start": 190.4,
+      "end": 199.20000000000002,
+      "duration": 8.800000000000011
+    },
+    {
+      "id": "10-h3",
+      "start": 199.20000000000002,
+      "end": 216.4,
+      "duration": 17.19999999999999
+    },
+    {
+      "id": "11-h4",
+      "start": 216.4,
+      "end": 236.88,
+      "duration": 20.47999999999999
+    },
+    {
+      "id": "12-h5",
+      "start": 236.88,
+      "end": 255.76,
+      "duration": 18.879999999999995
+    },
+    {
+      "id": "13-close",
+      "start": 255.76,
+      "end": 265.2,
+      "duration": 9.439999999999998
+    }
+  ],
+  "whisperExcerpt": [
+    "[0.0] Hello, this is our hiring assistant demo. You can click through the whole process. A person",
+    "[7.8] applies, HR reveals them and a person makes the final years or no. Two rows here. Job seekers",
+    "[17.8] and HR use different screens. The interview rounds offline and on local computers. Data",
+    "[25.4] states inside a country. The four cards show what we care about. Local data offline",
+    "[32.2] interview, English and Arabic. HR makes the final call. This slide shows if we are online",
+    "[41.8] or offline. Green is connected and yellow means offline.",
+    "[46.9] We start on the job seekers side. They are logging in and upload a CV. The system reads name,",
+    "[58.5] email works history and other fields. Green means okay, yellow means please check and",
+    "[64.5] red means missing. Click evidence to see where each value came from in the CV.",
+    "[70.6] And you need to confirm the fields and press submit. Next is CV update. If they upload a new CV,",
+    "[82.6] we show old and new side by side. Chain fields are highlighted. They must press accepted.",
+    "[89.6] This is an online test. Questions show in the English and Arabic. They",
+    "[99.9] pick answers and submit. The score appears right away. They can see which answers were wrong.",
+    "[106.9] They only see their own scores. This is the AI interview. First is English. The",
+    "[116.1] avatar asks a follow up. Then Arabic then submit. HR gets the recording and the job seekers does not.",
+    "[129.4] The photo and text on the left are settings. The real system will use voice and moving lips.",
+    "[137.2] Job seekers never see their rank or other people in the pool.",
+    "[140.8] They can see their match score and status. They cannot hire or reject anyone.",
+    "[151.8] Okay, we leave and open the HR side. And now this is the HR dashboard. HR uses different",
+    "[161.0] logging and different screens. Here we see six people ranked by fit. We can filter by",
+    "[168.2] scale, years and degree. We can export to Excel. Click score to see what.",
+    "[177.3] Okay, we see service at 98% because we can point you lines in their CV.",
+    "[184.7] Not a hidden number.",
+    "[190.4] To move someone forward, HR most type of reason, press short list.",
+    "[199.2] HR can watch the interview again. Photo, text and full chat in English and Arabic.",
+    "[207.0] Press play or click one line to drop. Job seekers cannot open this page definitely.",
+    "[216.4] And last step is hire or reject. The screen shows an AI suggestion. HR picks hire or reject.",
+    "[224.6] He also needs to write why and confirms. The system does not hire anyone by itself.",
+    "[236.9] This table lists who did what and when we can export it to a file.",
+    "[243.7] The bottom page sum up the demo. Two separate screens, clear scores and human decisions.",
+    "[250.3] And also the two languages.",
+    "[255.8] And so that's the full demo. The real products will connect to Jadeira around local AI and use",
+    "[263.1] a live avatar. Thank you."
+  ]
+}

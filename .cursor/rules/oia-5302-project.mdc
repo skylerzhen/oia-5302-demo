@@ -1,0 +1,45 @@
+---
+description: OIA RFQ 5302 demo project conventions for all Cursor sessions
+alwaysApply: true
+---
+
+# OIA 5302 Demo — Project Rules
+
+## Context
+
+- RFQ 5302 AI Recruitment Assistant vertical slice (S0–S8)
+- Dual portals: Candidate (Jadarah) / HR (OIA SSO)
+- Synthetic data only; no real PII
+- Live demo: https://oia-rfq-5302.surge.sh
+
+## Code conventions
+
+- Minimize diff scope; match existing React + Vite patterns
+- Bilingual EN/AR where the step requires it
+- Mock AI is intentional; label interfaces ready for GPU models later
+
+## Deploy & demo
+
+```bash
+npm run demo:offline      # local issue demo (127.0.0.1:4173)
+npm run deploy:surge      # online preview
+npm run demo:documents:publish  # regenerate controlled PDFs/HTML
+```
+
+## Surge PDF limitation
+
+Surge free tier blocks PDF hosting. Use HTML views via `controlledViewUrl()` and in-app `SourceDocumentModal`.
+
+## Session UX
+
+- Landing page on reload: do not persist `role` in sessionStorage
+- Source document links: in-app modal, not new-tab full page
+
+## Daily workflow
+
+End of day: user asks for daily log → update `docs/daily-logs/YYYY-MM-DD.md` → commit & push for 3-machine sync.
+
+## Paused work
+
+- 3D Avatar (VRoid / MakeHuman) until `.vrm` at `public/avatar/oia-vroid-interviewer.vrm`
+- Video synthesis not priority for issue delivery

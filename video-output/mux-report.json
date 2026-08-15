@@ -1,0 +1,21 @@
+{
+  "generatedAt": "2026-08-13T05:28:15.966Z",
+  "method": "natural_mux_cfr_no_speed_change",
+  "inputs": {
+    "video": "/Users/admin/Downloads/oia-5302-demo/video-output/OIA-Demo-Screen.mp4",
+    "audio": "/Users/admin/Downloads/oia-5302-demo/video-output/voiceover-clean.m4a",
+    "videoDurationSec": 268.48,
+    "audioDurationSec": 268.394667
+  },
+  "output": {
+    "path": "/Users/admin/Downloads/oia-5302-demo/video-output/OIA-Demo-Final.mp4",
+    "durationSec": 268.394667,
+    "fps": 30,
+    "sizeBytes": 11282535
+  },
+  "adjustments": {
+    "durationDeltaSec": 0.08533299999999144,
+    "videoPadSec": 0,
+    "videoTrimSec": 0.08533299999999144
+  }
+}

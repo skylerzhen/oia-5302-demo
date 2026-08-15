@@ -1,0 +1,70 @@
+{
+  "totalSec": 268.831,
+  "markers": [
+    {
+      "section": "01-open",
+      "note": "Landing (→32.2s)",
+      "atSec": 1.08
+    },
+    {
+      "section": "02-s0",
+      "note": "Network lamp (→46.9s)",
+      "atSec": 33.52
+    },
+    {
+      "section": "03-c1",
+      "note": "C1 done (→70.6s)",
+      "atSec": 51.22
+    },
+    {
+      "section": "04-c2",
+      "note": "C2 diff (→89.6s)",
+      "atSec": 70.58
+    },
+    {
+      "section": "05-c3",
+      "note": "C3 exam (→106.9s)",
+      "atSec": 91.94
+    },
+    {
+      "section": "06-c4",
+      "note": "C4 interview (→140.8s)",
+      "atSec": 137.4
+    },
+    {
+      "section": "07-c56",
+      "note": "HR portal (→151.8s)",
+      "atSec": 142.31
+    },
+    {
+      "section": "08-h1",
+      "note": "H1 dashboard (→190.4s)",
+      "atSec": 152.6
+    },
+    {
+      "section": "09-h2",
+      "note": "H2 shortlist (→199.2s)",
+      "atSec": 190.45
+    },
+    {
+      "section": "10-h3",
+      "note": "H3 replay (→216.4s)",
+      "atSec": 200.76
+    },
+    {
+      "section": "11-h4",
+      "note": "H4 decision (→236.9s)",
+      "atSec": 216.49
+    },
+    {
+      "section": "12-h5",
+      "note": "H5 audit (→255.8s)",
+      "atSec": 236.88
+    },
+    {
+      "section": "13-close",
+      "note": "Closing (→265.2s)",
+      "atSec": 255.76
+    }
+  ]
+}

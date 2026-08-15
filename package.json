@@ -1,0 +1,49 @@
+{
+  "name": "oia-5302-demo",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "node scripts/generate-controlled-html.mjs && tsc -b && vite build",
+    "verify:offline": "node scripts/verify-offline-build.mjs",
+    "demo:offline": "npm run build && npm run verify:offline && node scripts/serve-offline-demo.mjs",
+    "deploy:surge": "npm run build && npx --yes surge dist oia-rfq-5302.surge.sh",
+    "video:build": "node scripts/build-demo-video.mjs",
+    "video:record": "node scripts/record-demo.mjs",
+    "video:record-vo": "node scripts/align-by-transcript.mjs && node scripts/record-to-voiceover.mjs && node scripts/clean-voiceover.mjs && node scripts/mux-final.mjs",
+    "video:mux": "node scripts/mux-natural.mjs",
+    "video:sync": "node scripts/sync-segmented.mjs",
+    "video:sync-uniform": "node scripts/sync-audio-video.mjs",
+    "video:clean-audio": "node scripts/clean-voiceover.mjs",
+    "pdf:narration": "node scripts/generate-narration-pdf.mjs",
+    "pdf:handoff": "node scripts/generate-handoff-pdf.mjs",
+    "demo:documents": "node scripts/generate-demo-documents.mjs",
+    "demo:documents:publish": "npm run demo:documents && node scripts/sync-issue-inputs.mjs && node scripts/generate-controlled-html.mjs",
+    "demo:monitor": "node scripts/offline-monitor.mjs",
+    "pdf:narration:en": "node scripts/generate-narration-pdf.mjs",
+    "lint": "oxlint",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@pixiv/three-vrm": "^3.5.5",
+    "@react-three/drei": "^10.7.8",
+    "@react-three/fiber": "^9.7.0",
+    "lucide-react": "^1.31.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "react-router-dom": "^7.18.2",
+    "three": "^0.185.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.4",
+    "docx": "^9.7.1",
+    "oxlint": "^1.75.0",
+    "playwright": "^1.62.1",
+    "typescript": "~6.0.2",
+    "vite": "^8.2.0"
+  }
+}

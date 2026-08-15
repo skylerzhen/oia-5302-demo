@@ -1,0 +1,16 @@
+Win 上 Cursor 交接包
+====================
+
+1. 把整个 oia-5302-demo 项目文件夹拷到 Win
+2. 打开 Cursor，把 OIA-Win-Handoff.pdf 拖进对话
+3. 说：「读这个 PDF，继续 RFQ 5302 正式版开发」
+
+本文件夹内容：
+  OIA-Win-Handoff.pdf          ← 给 Cursor 的主交接 PDF（最重要）
+  WIN-HANDOFF.md               ← 同上，Markdown 版
+  OIA-Demo-Narration-Script-EN.pdf  ← 现场英文念稿（可选）
+  OIA-Demo-Narration-Script.pdf     ← 中文念稿（可选）
+  OIA-Demo-Script.pdf               ← 早期脚本（可选）
+  README.md                         ← 项目简介
+
+视频/录屏相关文件不在此包内，可忽略。
