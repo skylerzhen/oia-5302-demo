@@ -1,13 +1,13 @@
-import { CANDIDATES, PRIMARY_CANDIDATE_ID } from '../data/candidates'
+import { emptyProfileFields } from '../data/candidates'
 import type {
   AuditEntry,
   CandidateStepId,
   HrStepId,
+  IntegrationSyncEvent,
   InterviewTurn,
   PipelineStatus,
   ProfileField,
   UserRole,
-  UiLocale,
 } from '../types'
 
 const STORAGE_KEY = 'oia-5302-demo-session'
@@ -19,13 +19,13 @@ export interface DemoSession {
   hrStep: HrStepId
   pipeline: PipelineStatus
   auditLog: AuditEntry[]
+  integrationSyncs: IntegrationSyncEvent[]
   fields: ProfileField[]
   interviewTurns: InterviewTurn[]
   assessmentScore: number
   shortlistedReason: string
   disqualifiedReason: string
   finalReason: string
-  uiLocale: UiLocale
 }
 
 export const defaultPipeline: PipelineStatus = {
@@ -47,13 +47,13 @@ export function defaultSession(): DemoSession {
     hrStep: 'H1',
     pipeline: { ...defaultPipeline },
     auditLog: [],
-    fields: CANDIDATES.find((c) => c.id === PRIMARY_CANDIDATE_ID)!.fields.map((f) => ({ ...f })),
+    integrationSyncs: [],
+    fields: emptyProfileFields(),
     interviewTurns: [],
     assessmentScore: 0,
     shortlistedReason: '',
     disqualifiedReason: '',
     finalReason: '',
-    uiLocale: 'en' as UiLocale,
   }
 }
 
@@ -69,6 +69,7 @@ export function loadSession(): DemoSession {
       role: null,
       offline: false,
       pipeline: { ...defaultPipeline, ...(parsed.pipeline ?? {}) },
+      integrationSyncs: parsed.integrationSyncs ?? [],
     }
   } catch {
     return defaultSession()

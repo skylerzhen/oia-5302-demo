@@ -2,6 +2,33 @@ import { CANDIDATES } from '../data/candidates'
 import { FINANCE_JOB } from '../data/job'
 import type { CandidateMatch, CandidateProfile, MatchDimension } from '../types'
 
+export type CandidateMatchWithTips = CandidateMatch & {
+  improvementTips?: string[]
+}
+
+export function applyLlmMatchToCandidate(
+  candidate: CandidateProfile,
+  llm: {
+    totalScore: number
+    qualified: boolean
+    matchedCount: number
+    totalDimensions: number
+    dimensions: MatchDimension[]
+    improvementTips?: string[]
+  },
+): CandidateMatchWithTips {
+  return {
+    candidateId: candidate.id,
+    candidate,
+    totalScore: llm.totalScore,
+    matchedCount: llm.matchedCount,
+    totalDimensions: llm.totalDimensions,
+    qualified: llm.qualified,
+    dimensions: llm.dimensions,
+    improvementTips: llm.improvementTips ?? [],
+  }
+}
+
 function scoreCandidate(candidate: CandidateProfile): CandidateMatch {
   const text = `${candidate.cvText} ${candidate.skills.join(' ')}`.toLowerCase()
 
@@ -62,13 +89,13 @@ function scoreCandidate(candidate: CandidateProfile): CandidateMatch {
       }),
     },
     {
-      key: 'bilingual',
-      label: 'Arabic & English communication',
+      key: 'communication',
+      label: 'Stakeholder communication',
       weight: 20,
       test: () => ({
-        matched: candidate.skills.some((s) => /arabic|english/i.test(s)),
-        evidence: candidate.skills.filter((s) => /arabic|english/i.test(s)).join(', ') || 'Language skills not evidenced',
-        score: candidate.skills.some((s) => /arabic|english/i.test(s)) ? 20 : 6,
+        matched: /communication|reporting|stakeholder|present/i.test(text),
+        evidence: candidate.cvText.split('\n').find((l) => /report|stakeholder|communic/i.test(l)) ?? 'Communication evidence in CV',
+        score: /communication|reporting|stakeholder|present/i.test(text) ? 20 : 6,
       }),
     },
   ]
@@ -123,19 +150,9 @@ export function buildInterviewFollowUp(answer: string, round = 0): string {
   return templates[Math.min(round, templates.length - 1)]
 }
 
-export function buildArabicInterviewPrompt(): string {
-  return 'بالعربية: كيف تتعامل مع الفروقات بين التوقعات والنتائج الفعلية في تقاريرك الربع سنوية؟'
-}
-
-export function buildArabicFollowUp(): string {
-  return 'شكراً. بناءً على إجابتكم، ما الإجراء الذي اتخذتموه عندما تجاوز التباين الحد المقبول؟'
-}
-
 export type InterviewUiPhase =
   | 'idle'
   | 'english_answer'
-  | 'english_done'
-  | 'arabic_answer'
   | 'ready_to_finish'
 
 export function getInterviewUiPhase(
@@ -146,12 +163,11 @@ export function getInterviewUiPhase(
   if (turns.length === 0) return 'idle'
 
   const candidateTurns = turns.filter((t) => t.speaker === 'candidate')
-  const hasArabicPrompt = turns.some((t) => t.speaker === 'avatar' && t.language === 'ar')
+  const avatarTurns = turns.filter((t) => t.speaker === 'avatar')
 
   if (candidateTurns.length === 0) return 'english_answer'
-  if (!hasArabicPrompt) return 'english_done'
-  if (candidateTurns.filter((t) => t.language === 'ar').length === 0) return 'arabic_answer'
-  return 'ready_to_finish'
+  if (avatarTurns.length >= 2 && candidateTurns.length >= 1) return 'ready_to_finish'
+  return 'english_answer'
 }
 
 export function buildImprovementTips(match: CandidateMatch): string[] {

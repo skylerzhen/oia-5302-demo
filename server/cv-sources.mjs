@@ -4,7 +4,7 @@ import { resolve } from 'node:path'
 const SAMPLE_TO_SOURCE = {
   'pdf-en': '01-sara-al-hinai-en.md',
   'docx-en': '02-khalid-al-balushi-en.md',
-  'pdf-ar-scan': '04-noor-al-hashmi-ar-scan.md',
+  'pdf-scan': '04-noor-al-hashmi-ar-scan.md',
 }
 
 const FILE_NAME_TO_SOURCE = {

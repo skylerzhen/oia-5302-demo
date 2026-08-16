@@ -14,6 +14,7 @@ export interface TtsResult {
   mimeType?: string
   visemeMarks?: VisemeMark[]
   visemeSource?: 'azure' | 'estimated'
+  ttsProvider?: 'azure' | 'openai' | 'edge' | 'browser'
 }
 
 export interface CvParseResult {
@@ -47,7 +48,7 @@ export interface AssessmentDimension {
   evidence: {
     id: string
     speaker: 'candidate' | 'avatar'
-    language: 'en' | 'ar'
+    language: 'en'
     text: string
   }
 }
@@ -56,6 +57,31 @@ export interface AssessmentResult {
   mode: LocalAiMode
   recommendation: string
   dimensions: AssessmentDimension[]
+}
+
+export interface LlmMatchDimension {
+  key: string
+  label: string
+  weight: number
+  score: number
+  maxScore: number
+  evidence: string
+  matched: boolean
+}
+
+export interface LlmMatchEntry {
+  candidateId: string
+  totalScore: number
+  qualified: boolean
+  matchedCount: number
+  totalDimensions: number
+  dimensions: LlmMatchDimension[]
+  improvementTips: string[]
+}
+
+export interface MatchCandidatesResult {
+  mode: LocalAiMode
+  matches: LlmMatchEntry[]
 }
 
 export interface LocalAiStatus {
@@ -110,21 +136,19 @@ export const localAi = {
     return response.json() as Promise<LocalAiStatus>
   }),
   parseCv: (payload: {
-    fileName: string
-    isArabicScan: boolean
     sampleId?: string
+    fileName: string
+    isScannedPdf?: boolean
     fileSize?: number
     fileType?: string
     documentText?: string
   }) => post<CvParseResult>('/api/local-ai/ocr/parse-cv', payload),
   generateQuestion: (payload: {
-    language: 'en' | 'ar'
-    purpose?: 'opening' | 'arabic-segment'
+    purpose?: 'opening'
     candidateProfile?: CandidateProfileInput
   }) => post<QuestionResult>('/api/local-ai/llm/generate-question', payload),
   followUp: (payload: {
     answer: string
-    language: 'en' | 'ar'
     priorTurns?: Array<{ speaker: string; language: string; text: string }>
   }) => post<FollowUpResult>('/api/local-ai/llm/follow-up', payload),
   generateAssessment: (payload: {
@@ -133,8 +157,16 @@ export const localAi = {
     matchScore: number
     jobTitle?: string
   }) => post<AssessmentResult>('/api/local-ai/llm/generate-assessment', payload),
-  transcribe: (payload: { transcript?: string; text?: string; language?: 'en' | 'ar' }) =>
-    post<{ mode: LocalAiMode; transcript: string }>('/api/local-ai/asr/transcribe', payload),
-  synthesize: (payload: { text: string; language: 'en' | 'ar' }) =>
+  matchCandidates: (payload: {
+    candidates: Array<{ candidateId: string; name: string; cvText: string }>
+    jobDescription?: string
+  }) => post<MatchCandidatesResult>('/api/local-ai/llm/match-candidates', payload),
+  transcribe: (payload: {
+    transcript?: string
+    text?: string
+    pcmBase64?: string
+    sampleRate?: number
+  }) => post<{ mode: LocalAiMode; transcript: string; asrProvider?: string }>('/api/local-ai/asr/transcribe', payload),
+  synthesize: (payload: { text: string }) =>
     post<TtsResult>('/api/local-ai/tts/synthesize', payload),
 }

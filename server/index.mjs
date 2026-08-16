@@ -1,9 +1,11 @@
 import { createServer } from 'node:http'
 import { loadEnv } from './load-env.mjs'
+import { getLlmConfig } from './llm-client.mjs'
 import {
   handleFollowUp,
   handleGenerateAssessment,
   handleGenerateQuestion,
+  handleMatchCandidates,
   handleParseCv,
   handleStatus,
   handleSynthesize,
@@ -37,6 +39,7 @@ const routes = {
   'POST /api/local-ai/llm/generate-question': async (req, res) => sendJson(res, 200, await handleGenerateQuestion(await readJson(req))),
   'POST /api/local-ai/llm/follow-up': async (req, res) => sendJson(res, 200, await handleFollowUp(await readJson(req))),
   'POST /api/local-ai/llm/generate-assessment': async (req, res) => sendJson(res, 200, await handleGenerateAssessment(await readJson(req))),
+  'POST /api/local-ai/llm/match-candidates': async (req, res) => sendJson(res, 200, await handleMatchCandidates(await readJson(req))),
   'POST /api/local-ai/tts/synthesize': async (req, res) => sendJson(res, 200, await handleSynthesize(await readJson(req))),
   'POST /api/local-ai/asr/transcribe': async (req, res) => sendJson(res, 200, await handleTranscribe(await readJson(req))),
 }
@@ -68,6 +71,10 @@ createServer(async (req, res) => {
   }
 }).listen(PORT, () => {
   const azure = Boolean(process.env.AZURE_SPEECH_KEY?.trim() && process.env.AZURE_SPEECH_REGION?.trim())
+  const openaiTts = Boolean(process.env.OPENAI_API_KEY?.trim())
+  const tts = azure ? 'azure' : openaiTts ? 'openai' : 'edge-neural'
+  const { provider, label } = getLlmConfig()
   console.log(`LLM API listening on http://127.0.0.1:${PORT}`)
-  console.log(`Speech: TTS=${azure ? 'azure' : 'browser'} ASR=${azure ? 'azure' : 'browser'} viseme=${azure ? 'azure-sdk' : 'estimated'}`)
+  console.log(`LLM: ${label} (${provider})`)
+  console.log(`Speech: TTS=${tts} ASR=${azure ? 'azure' : 'browser'} viseme=${azure ? 'azure-sdk' : 'estimated'}`)
 })

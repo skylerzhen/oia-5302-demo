@@ -1,4 +1,5 @@
 import type { Viseme } from '../types'
+import { getSharedAudioContext, unlockAudioPlayback } from './audioUnlock'
 import { buildVisemeTimeline, type VisemeMark } from './visemeTimeline'
 import { jawHintForViseme } from './avatarLipSyncBus'
 
@@ -66,14 +67,18 @@ export async function runAudioSyncedLipSync(options: {
   signal?.addEventListener('abort', onAbort, { once: true })
 
   const ensureAnalyser = () => {
-    if (analyser || !audioCtx) return
+    if (analyser) return
+    unlockAudioPlayback()
+    const ctx = getSharedAudioContext()
+    if (!ctx) return
+    audioCtx = ctx
     try {
-      const source = audioCtx.createMediaElementSource(audio)
-      analyser = audioCtx.createAnalyser()
+      const source = ctx.createMediaElementSource(audio)
+      analyser = ctx.createAnalyser()
       analyser.fftSize = 512
       analyser.smoothingTimeConstant = 0.35
       source.connect(analyser)
-      analyser.connect(audioCtx.destination)
+      analyser.connect(ctx.destination)
     } catch {
       analyser = null
     }
@@ -92,8 +97,9 @@ export async function runAudioSyncedLipSync(options: {
     }
 
     const startLoop = () => {
-      if (!audioCtx) audioCtx = new AudioContext()
-      void audioCtx.resume()
+      unlockAudioPlayback()
+      const ctx = getSharedAudioContext()
+      if (ctx) audioCtx = ctx
       ensureAnalyser()
       tick()
     }
@@ -111,7 +117,11 @@ export async function runAudioSyncedLipSync(options: {
       reject(new Error('Could not play synthesized speech audio'))
     }, { once: true })
 
-    void audio.play().catch(reject)
+    void audio.play().catch((error) => {
+      cleanup()
+      signal?.removeEventListener('abort', onAbort)
+      reject(error instanceof Error ? error : new Error('Could not play synthesized speech audio'))
+    })
   })
 }
 
@@ -151,7 +161,7 @@ export async function runClockSyncedLipSync(options: {
       const pulse = 0.85 + Math.sin(elapsed * divisorForViseme(viseme)) * 0.15
       onTick({
         viseme,
-        jawOpen: blendJaw(viseme, jawHintForViseme(viseme) * pulse),
+        jawOpen: Math.min(1, blendJaw(viseme, jawHintForViseme(viseme) * pulse)),
       })
       if (elapsed < durationMs) raf = requestAnimationFrame(tick)
       else {
@@ -165,9 +175,12 @@ export async function runClockSyncedLipSync(options: {
 }
 
 function divisorForViseme(viseme: Viseme) {
-  if (viseme === 'rest') return 0.004
-  if (viseme === 'M') return 0.012
-  return 0.022
+  if (viseme === 'rest') return 0.003
+  if (viseme === 'M') return 0.008
+  if (viseme === 'F') return 0.014
+  if (viseme === 'O') return 0.018
+  if (viseme === 'E') return 0.02
+  return 0.024
 }
 
 export function marksFromTts(text: string, language: 'en' | 'ar', durationMs: number) {

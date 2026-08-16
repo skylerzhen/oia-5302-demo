@@ -1,29 +1,48 @@
-import type { CandidateProfile } from '../types'
+import type { CandidateProfile, ProfileField } from '../types'
 
 export const PRIMARY_CANDIDATE_ID = 'cand-sara'
+
+const PROFILE_FIELD_DEFS: Array<Pick<ProfileField, 'key' | 'label'>> = [
+  { key: 'name', label: 'Full name' },
+  { key: 'email', label: 'Email' },
+  { key: 'experience', label: 'Years of experience' },
+  { key: 'education', label: 'Education' },
+  { key: 'certification', label: 'Professional certification' },
+]
+
+export function emptyProfileFields(): ProfileField[] {
+  return PROFILE_FIELD_DEFS.map((field) => ({
+    ...field,
+    value: '',
+    status: 'missing',
+    evidence: '',
+    source: '',
+  }))
+}
+
+export function primaryCandidateProfileFields(): ProfileField[] {
+  return CANDIDATES.find((c) => c.id === PRIMARY_CANDIDATE_ID)!.fields.map((f) => ({ ...f }))
+}
 
 export const CANDIDATES: CandidateProfile[] = [
   {
     id: 'cand-sara',
     name: 'Sara Al-Hinai',
-    nameAr: 'سارة الهنائية',
     email: 'sara.alhinai@example.om',
     nationality: 'Omani',
     yearsExperience: 7,
     education: 'MSc Finance, Sultan Qaboos University',
-    skills: ['Portfolio analysis', 'Risk reporting', 'Excel modeling', 'Arabic', 'English'],
+    skills: ['Portfolio analysis', 'Risk reporting', 'Excel modeling', 'Stakeholder communication', 'English'],
     cvText: `Sara Al-Hinai — Senior Financial Analyst
 7 years experience in portfolio analysis and risk reporting at a sovereign wealth fund subsidiary.
-Led quarterly portfolio variance analysis and bilingual board reporting packs.
-Skills: Portfolio analysis, Risk reporting, Excel modeling, Arabic, English.
+Led quarterly portfolio variance analysis and board reporting packs.
+Skills: Portfolio analysis, Risk reporting, Excel modeling, Stakeholder communication, English.
 Education: MSc Finance, Sultan Qaboos University.`,
-    cvTextAr: 'سبع سنوات خبرة في تحليل المحافظ وإعداد تقارير المخاطر.',
     cvFile: '/issue-5302-inputs/01-sara-al-hinai-en.pdf',
     fields: [
       {
         key: 'name',
         label: 'Full name',
-        labelAr: 'الاسم الكامل',
         value: 'Sara Al-Hinai',
         status: 'parsed',
         evidence: 'Sara Al-Hinai — Senior Financial Analyst',
@@ -32,7 +51,6 @@ Education: MSc Finance, Sultan Qaboos University.`,
       {
         key: 'email',
         label: 'Email',
-        labelAr: 'البريد الإلكتروني',
         value: 'sara.alhinai@example.om',
         status: 'parsed',
         evidence: 'sara.alhinai@example.om',
@@ -41,7 +59,6 @@ Education: MSc Finance, Sultan Qaboos University.`,
       {
         key: 'experience',
         label: 'Years of experience',
-        labelAr: 'سنوات الخبرة',
         value: '7',
         status: 'parsed',
         evidence: '7 years experience in portfolio analysis',
@@ -50,7 +67,6 @@ Education: MSc Finance, Sultan Qaboos University.`,
       {
         key: 'education',
         label: 'Education',
-        labelAr: 'التعليم',
         value: 'MSc Finance, Sultan Qaboos University',
         status: 'review',
         evidence: 'MSc Finance, Sultan Qaboos University',
@@ -59,7 +75,6 @@ Education: MSc Finance, Sultan Qaboos University.`,
       {
         key: 'certification',
         label: 'Professional certification',
-        labelAr: 'الشهادة المهنية',
         value: '',
         status: 'missing',
         evidence: '',
@@ -70,12 +85,11 @@ Education: MSc Finance, Sultan Qaboos University.`,
   {
     id: 'cand-khalid',
     name: 'Khalid Al-Balushi',
-    nameAr: 'خالد البلوشي',
     email: 'k.albalushi@example.om',
     nationality: 'Omani',
     yearsExperience: 5,
     education: 'BSc Accounting',
-    skills: ['Financial reporting', 'Excel', 'Arabic'],
+    skills: ['Financial reporting', 'Excel', 'English'],
     cvText: '5 years in financial reporting. Limited portfolio analysis exposure.',
     cvFile: '/issue-5302-inputs/02-khalid-al-balushi-en.docx',
     fields: [],
@@ -83,12 +97,11 @@ Education: MSc Finance, Sultan Qaboos University.`,
   {
     id: 'cand-lina',
     name: 'Lina Al-Abri',
-    nameAr: 'لينا العبري',
     email: 'l.abri@example.om',
     nationality: 'Omani',
     yearsExperience: 9,
     education: 'MBA Finance',
-    skills: ['Portfolio analysis', 'Risk', 'Stakeholder reporting', 'English', 'Arabic'],
+    skills: ['Portfolio analysis', 'Risk', 'Stakeholder reporting', 'English'],
     cvText: '9 years portfolio and risk leadership experience.',
     cvFile: '/issue-5302-inputs/03-lina-al-abri-bilingual.pdf',
     fields: [],
@@ -96,7 +109,6 @@ Education: MSc Finance, Sultan Qaboos University.`,
   {
     id: 'cand-omar',
     name: 'Omar Al-Saidi',
-    nameAr: 'عمر السعيدي',
     email: 'o.alsaidi@example.om',
     nationality: 'Omani',
     yearsExperience: 3,
@@ -109,7 +121,6 @@ Education: MSc Finance, Sultan Qaboos University.`,
   {
     id: 'cand-noor',
     name: 'Noor Al-Hashmi',
-    nameAr: 'نور الهاشمي',
     email: 'n.hashmi@example.om',
     nationality: 'Omani',
     yearsExperience: 6,
@@ -122,7 +133,6 @@ Education: MSc Finance, Sultan Qaboos University.`,
   {
     id: 'cand-yusuf',
     name: 'Yusuf Al-Rashdi',
-    nameAr: 'يوسف الراشدي',
     email: 'y.rashdi@example.om',
     nationality: 'Expatriate',
     yearsExperience: 2,
@@ -138,24 +148,21 @@ export const CV_UPLOAD_SAMPLES = [
   {
     id: 'pdf-en',
     label: '01-sara-al-hinai-en.pdf · English electronic PDF',
-    labelAr: 'PDF إلكتروني (إنجليزي)',
     candidateId: PRIMARY_CANDIDATE_ID,
-    filePath: '/issue-5302-inputs/01-sara-al-hinai-en.pdf',
+    filePath: '/issue-5302-inputs/01-sara-al-hinai-en.html',
   },
   {
     id: 'docx-en',
     label: '02-khalid-al-balushi-en.docx · English DOCX',
-    labelAr: 'DOCX (إنجليزي)',
     candidateId: 'cand-khalid',
     filePath: '/issue-5302-inputs/02-khalid-al-balushi-en.docx',
   },
   {
-    id: 'pdf-ar-scan',
-    label: '04-noor-al-hashmi-ar-scan.pdf · Arabic scanned PDF',
-    labelAr: 'PDF عربي ممسوح',
+    id: 'pdf-scan',
+    label: '04-noor-al-hashmi-scan.pdf · Scanned PDF (OCR review)',
     candidateId: 'cand-noor',
     note: 'OCR path — education field flagged for review',
-    filePath: '/issue-5302-inputs/04-noor-al-hashmi-ar-scan.pdf',
+    filePath: '/issue-5302-inputs/04-noor-al-hashmi-ar-scan.html',
   },
 ]
 

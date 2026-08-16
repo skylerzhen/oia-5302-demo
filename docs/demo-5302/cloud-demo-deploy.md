@@ -9,7 +9,7 @@ https://oia-rfq-5302.surge.sh        ← 前端（Surge 静态站）
        ↓  HTTPS
 https://<你的-cloud-api>/api/local-ai/...   ← LLM 后端（Render / Railway 等）
        ↓
-DeepSeek / OpenAI API
+DeepSeek / OpenAI API（当前默认 **OpenAI**：LLM + TTS）
 ```
 
 Surge **只托管前端**；LLM **必须部署在云端 Node 服务**。这是 v3 设计，不是 Surge 的 bug。
@@ -32,14 +32,25 @@ Surge **只托管前端**；LLM **必须部署在云端 Node 服务**。这是 v
 5. **Environment Variables**（在 Render 面板填，不要写进代码）：
 
 ```
-LLM_PROVIDER=deepseek
-DEEPSEEK_API_KEY=sk-...
-LLM_MODEL=deepseek-chat
-LLM_MODEL_FAST=deepseek-chat
+LLM_PROVIDER=openai
+OPENAI_API_KEY=sk-...
+OPENAI_TTS_VOICE=shimmer
+OPENAI_TTS_MODEL=tts-1
+LLM_MODEL=gpt-4o
+LLM_MODEL_FAST=gpt-4o-mini
 LLM_API_PORT=10000
 ```
 
-**Azure Speech（C4 TTS 口型 + ASR，推荐）：**
+验证 OpenAI LLM + TTS 已生效：
+
+```bash
+curl -s https://<你的-render-url>/api/local-ai/status
+npm run verify:openai-tts:render
+```
+
+应看到 `"provider":"openai"`, `"ttsProvider":"openai"`。
+
+**Azure Speech（可选 — 口型 viseme + ASR，会覆盖 OpenAI TTS）：**
 
 ```
 AZURE_SPEECH_KEY=<Speech 资源 Key 1>
@@ -106,7 +117,7 @@ UIS 打开 https://oia-rfq-5302.surge.sh 即可用 LLM，**无需在本机装 No
 ## 四、本地开发（仅你们自己改代码时用）
 
 ```bash
-cp llm.env.example llm.env   # 填 DEEPSEEK_API_KEY
+cp llm.env.example llm.env   # 填 OPENAI_API_KEY
 npm run dev                    # Vite proxy → localhost:8787
 ```
 

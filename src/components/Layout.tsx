@@ -1,13 +1,13 @@
 import { LogOut, Shield } from 'lucide-react'
 import { useEffect, useRef, type ReactNode } from 'react'
-import type { AuditEntry, UiLocale, UserRole } from '../types'
-import { formatAuditTime } from '../lib/audit'
+import type { UserRole } from '../types'
 import { NetworkStatus } from './NetworkStatus'
+import { IntegrationStatusPanel } from './IntegrationStatusPanel'
+import type { IntegrationSyncEvent } from '../types'
 
 interface StepItem {
   id: string
   label: string
-  labelAr: string
   locked?: boolean
   lockNote?: string
 }
@@ -16,13 +16,12 @@ interface LayoutProps {
   role: UserRole
   offline: boolean
   onToggleOffline: () => void
-  uiLocale: UiLocale
-  onToggleLocale: () => void
   activeStep: string
   steps: readonly StepItem[]
   onStepChange: (step: string) => void
   onLogout: () => void
-  auditLog: AuditEntry[]
+  integrationSyncs: IntegrationSyncEvent[]
+  demoShortcut?: ReactNode
   children: ReactNode
 }
 
@@ -30,13 +29,12 @@ export function Layout({
   role,
   offline,
   onToggleOffline,
-  uiLocale,
-  onToggleLocale,
   activeStep,
   steps,
   onStepChange,
   onLogout,
-  auditLog,
+  integrationSyncs,
+  demoShortcut,
   children,
 }: LayoutProps) {
   const roleLabel = role === 'candidate' ? 'Candidate portal (Jadarah token)' : 'HR portal (OIA SSO + MFA)'
@@ -71,9 +69,6 @@ export function Layout({
           </div>
         </div>
         <div className="topbar-actions">
-          <button type="button" className="locale-toggle" onClick={onToggleLocale}>
-            {uiLocale === 'en' ? 'EN | AR' : 'AR | EN'}
-          </button>
           <NetworkStatus offline={offline} onToggle={onToggleOffline} />
           <button type="button" className="ghost-btn" onClick={onLogout}>
             <LogOut size={16} /> Exit portal
@@ -95,30 +90,16 @@ export function Layout({
               >
                 <span>{step.id}</span>
                 <div>
-                  <strong>{uiLocale === 'ar' ? step.labelAr : step.label}</strong>
-                  <small>{uiLocale === 'en' ? step.labelAr : step.label}</small>
+                  <strong>{step.label}</strong>
                   {step.locked && step.lockNote && <small className="lock-note">{step.lockNote}</small>}
                 </div>
               </button>
             ))}
           </nav>
 
-          <div className="audit-panel">
-            <h3>Audit trail</h3>
-            {auditLog.length === 0 ? (
-              <p className="muted">Actions will appear here.</p>
-            ) : (
-              <ul>
-                {auditLog.slice(-5).reverse().map((entry) => (
-                  <li key={entry.id}>
-                    <strong>{entry.action}</strong>
-                    <span>{formatAuditTime(entry.timestamp)} · {entry.actor}</span>
-                    <p>{entry.detail}</p>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
+          {demoShortcut && <div className="demo-shortcut-panel">{demoShortcut}</div>}
+
+          <IntegrationStatusPanel events={integrationSyncs} />
         </aside>
 
         <main ref={contentRef} className="content">{children}</main>

@@ -14,15 +14,16 @@ npm run dev
 Provider switch (no code change):
 
 ```bash
-# DeepSeek (current default)
-LLM_PROVIDER=deepseek
-DEEPSEEK_API_KEY=...
-
-# OpenAI (when tech lead approves)
+# OpenAI (default — LLM + TTS)
 LLM_PROVIDER=openai
 OPENAI_API_KEY=...
+OPENAI_TTS_VOICE=shimmer
 LLM_MODEL=gpt-4o
 LLM_MODEL_FAST=gpt-4o-mini
+
+# DeepSeek (legacy fallback)
+LLM_PROVIDER=deepseek
+DEEPSEEK_API_KEY=...
 ```
 
 Routes:

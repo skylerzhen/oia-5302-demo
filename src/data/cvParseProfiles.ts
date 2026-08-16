@@ -1,26 +1,24 @@
-import type { FieldStatus } from '../types'
+export interface CvParseProfile {
+  label: string
+  fileName: string
+  isScannedPdf: boolean
+  fields: CvParseFieldResult[]
+}
 
 export interface CvParseFieldResult {
   key: string
   value?: string
-  status: FieldStatus
+  status: import('../types').FieldStatus
   evidence?: string
   source: string
   confidence?: number
-}
-
-export interface CvParseProfile {
-  label: string
-  fileName: string
-  isArabicScan: boolean
-  fields: CvParseFieldResult[]
 }
 
 export const CV_PARSE_PROFILES: Record<string, CvParseProfile> = {
   'pdf-en': {
     label: '01-sara-al-hinai-en.pdf',
     fileName: '01-sara-al-hinai-en.pdf',
-    isArabicScan: false,
+    isScannedPdf: false,
     fields: [
       { key: 'name', value: 'Sara Al-Hinai', status: 'parsed', evidence: 'Sara Al-Hinai — Senior Financial Analyst', source: 'Electronic PDF, page 1 header' },
       { key: 'email', value: 'sara.alhinai@example.om', status: 'parsed', evidence: 'sara.alhinai@example.om', source: 'Contact block, page 1' },
@@ -32,7 +30,7 @@ export const CV_PARSE_PROFILES: Record<string, CvParseProfile> = {
   'docx-en': {
     label: '02-khalid-al-balushi-en.docx',
     fileName: '02-khalid-al-balushi-en.docx',
-    isArabicScan: false,
+    isScannedPdf: false,
     fields: [
       { key: 'name', value: 'Sara Al-Hinai', status: 'parsed', evidence: 'Sara Al-Hinai', source: 'DOCX body, paragraph 1' },
       { key: 'email', value: 'sara.alhinai@example.om', status: 'parsed', evidence: 'sara.alhinai@example.om', source: 'DOCX contact line' },
@@ -41,15 +39,15 @@ export const CV_PARSE_PROFILES: Record<string, CvParseProfile> = {
       { key: 'certification', value: '', status: 'missing', evidence: '', source: 'No certification found in source document' },
     ],
   },
-  'pdf-ar-scan': {
-    label: '04-noor-al-hashmi-ar-scan.pdf',
-    fileName: '04-noor-al-hashmi-ar-scan.pdf',
-    isArabicScan: true,
+  'pdf-scan': {
+    label: '04-noor-al-hashmi-scan.pdf',
+    fileName: '04-noor-al-hashmi-scan.pdf',
+    isScannedPdf: true,
     fields: [
-      { key: 'name', value: 'Sara Al-Hinai', status: 'parsed', evidence: 'سارة / Sara Al-Hinai', source: 'Scanned PDF, page 1 (OCR)' },
+      { key: 'name', value: 'Sara Al-Hinai', status: 'parsed', evidence: 'Sara Al-Hinai', source: 'Scanned PDF, page 1 (OCR)' },
       { key: 'email', value: 'sara.alhinai@example.om', status: 'parsed', evidence: 'sara.alhinai@example.om', source: 'Scanned PDF, page 1 (OCR)' },
       { key: 'experience', value: '7', status: 'parsed', evidence: 'seven years', source: 'Scanned PDF, page 1 (OCR)' },
-      { key: 'education', value: 'MSc Finance, Sultan Qaboos University', status: 'review', evidence: 'MSc Finance, Sultan Qaboos University', source: 'Arabic scanned PDF, page 1', confidence: 0.82 },
+      { key: 'education', value: 'MSc Finance, Sultan Qaboos University', status: 'review', evidence: 'MSc Finance, Sultan Qaboos University', source: 'Scanned PDF, page 1 (OCR)', confidence: 0.82 },
       { key: 'certification', value: '', status: 'missing', evidence: '', source: 'Not found in scanned document' },
     ],
   },
@@ -57,7 +55,7 @@ export const CV_PARSE_PROFILES: Record<string, CvParseProfile> = {
 
 export function resolveSampleProfileId(fileName: string): string | null {
   const normalized = fileName.toLowerCase()
-  if (normalized.includes('noor') || normalized.includes('ar-scan') || normalized.includes('scan')) return 'pdf-ar-scan'
+  if (normalized.includes('noor') || normalized.includes('scan')) return 'pdf-scan'
   if (normalized.endsWith('.docx')) return 'docx-en'
   if (normalized.includes('sara') || normalized.endsWith('.pdf')) return 'pdf-en'
   return null

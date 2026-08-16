@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Download, UserCheck, UserX, Zap } from 'lucide-react'
 import { useDemo } from '../context/DemoContext'
 import { EvidenceModal } from './EvidenceModal'
@@ -9,21 +9,22 @@ import { Layout } from './Layout'
 import { MatchDashboard } from './MatchDashboard'
 import { PRIMARY_CANDIDATE_ID } from '../data/candidates'
 import { FINANCE_JOB } from '../data/job'
-import { formatAuditTime } from '../lib/audit'
 import { HR_STEPS } from '../lib/demo'
 import { localAi, type AssessmentResult } from '../lib/localAi'
-import { getMatchById, rankCandidates } from '../lib/matching'
+import { rankCandidates, type CandidateMatchWithTips } from '../lib/matching'
+import { loadLlmMatches } from '../lib/llmMatching'
 import type { HrStepId } from '../types'
 
 export function HrPortal() {
   const {
-    auditLog, log, pipeline, setPipeline,
+    log, integrationSyncs, syncIntegration, pipeline, setPipeline,
     interviewTurns, assessmentScore,
     shortlistedReason, setShortlistedReason,
     disqualifiedReason, setDisqualifiedReason,
     finalReason, setFinalReason,
     hrStep: step, setHrStep: setStep, logout, seedDemoForHr,
-    offline, setOffline, uiLocale, toggleUiLocale,
+    offline, setOffline,
+    fields,
   } = useDemo()
 
   const [selectedId, setSelectedId] = useState(PRIMARY_CANDIDATE_ID)
@@ -35,17 +36,45 @@ export function HrPortal() {
   const [interviewReport, setInterviewReport] = useState<AssessmentResult | null>(null)
   const [assessmentLoading, setAssessmentLoading] = useState(false)
   const [assessmentError, setAssessmentError] = useState('')
+  const [matches, setMatches] = useState<CandidateMatchWithTips[]>(() => rankCandidates())
+  const [matchLoading, setMatchLoading] = useState(false)
+  const [matchMode, setMatchMode] = useState<'model' | 'adapter-fallback' | 'browser' | 'unavailable'>('unavailable')
+  const [matchError, setMatchError] = useState('')
 
-  const matches = useMemo(() => rankCandidates(), [])
-  const filtered = matches.filter((m) => {
+  const matchesMemo = matches
+  const filtered = matchesMemo.filter((m) => {
     if (filters.skill && !m.candidate.skills.some((s) => s.toLowerCase().includes(filters.skill.toLowerCase()))) return false
     if (filters.minYears && m.candidate.yearsExperience < filters.minYears) return false
     if (filters.degree && !m.candidate.education.toLowerCase().includes(filters.degree.toLowerCase())) return false
     return true
   })
 
-  const selected = getMatchById(selectedId) ?? matches[0]
+  const selected = matchesMemo.find((m) => m.candidateId === selectedId) ?? matchesMemo[0]
   const readyForInterviewReview = pipeline.interviewCompleted || interviewTurns.length > 0
+
+  useEffect(() => {
+    let active = true
+    setMatchLoading(true)
+    setMatchError('')
+    loadLlmMatches(fields)
+      .then(({ matches: next, mode }) => {
+        if (!active) return
+        setMatches(next)
+        setMatchMode(mode)
+        log('System', 'LLM CV–JD pool ranked', `${next.length} candidates · mode ${mode}`, 'H1')
+      })
+      .catch((error: Error) => {
+        if (!active) return
+        setMatchError(error.message)
+        setMatches(rankCandidates())
+        log('System', 'LLM match pool failed', error.message, 'H1')
+      })
+      .finally(() => {
+        if (active) setMatchLoading(false)
+      })
+
+    return () => { active = false }
+  }, [fields, log])
 
   useEffect(() => {
     if (!readyForInterviewReview || interviewTurns.length === 0) {
@@ -130,32 +159,15 @@ export function HrPortal() {
     log('Recruiter', 'Export', 'Match dashboard CSV with dimension scores', 'H1')
   }
 
-  function exportAuditCsv() {
-    const header = 'Timestamp,Step,Actor,Action,Detail'
-    const rows = auditLog.map((e) =>
-      `${formatAuditTime(e.timestamp)},${e.step},${e.actor},${e.action},"${e.detail.replace(/"/g, '""')}"`,
-    )
-    const blob = new Blob([[header, ...rows].join('\n')], { type: 'text/csv' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'audit-report.csv'
-    a.click()
-    URL.revokeObjectURL(url)
-    log('Recruiter', 'Export', 'Full audit report CSV', 'H5')
-  }
-
   const layoutProps = {
     role: 'hr' as const,
     offline,
     onToggleOffline: () => setOffline(!offline),
-    uiLocale,
-    onToggleLocale: toggleUiLocale,
     activeStep: step,
     steps,
     onStepChange: (s: string) => setStep(s as HrStepId),
     onLogout: logout,
-    auditLog,
+    integrationSyncs,
   }
 
   return (
@@ -171,7 +183,7 @@ export function HrPortal() {
           <header className="section-head dashboard-head">
             <div>
               <h1>H1 · Matching dashboard</h1>
-              <p>{FINANCE_JOB.title} · visual ranking · evidence drill-down</p>
+              <p>{FINANCE_JOB.title} · LLM CV–JD rubric ({matchMode}) · evidence drill-down · candidate pool from simulated Jadarah read (I1)</p>
             </div>
             {!readyForInterviewReview && (
               <button type="button" className="primary" onClick={seedDemoForHr}>
@@ -179,6 +191,8 @@ export function HrPortal() {
               </button>
             )}
           </header>
+          {matchLoading && <p className="muted" role="status">LLM is scoring candidates against the job description…</p>}
+          {matchError && <p className="danger-text">{matchError}</p>}
           <div className="filters card">
             <input placeholder="Filter: skill (e.g. portfolio)" value={filters.skill} onChange={(e) => setFilters({ ...filters, skill: e.target.value })} />
             <input type="number" placeholder="Min years" value={filters.minYears || ''} onChange={(e) => setFilters({ ...filters, minYears: Number(e.target.value) || 0 })} />
@@ -199,16 +213,18 @@ export function HrPortal() {
             <textarea placeholder="Reason for shortlist (required)" value={shortlistedReason} onChange={(e) => setShortlistedReason(e.target.value)} />
             <button type="button" className="primary" disabled={!shortlistedReason.trim()} onClick={() => {
               setPipeline({ shortlisted: true })
+              syncIntegration('jadarah.pipelineStatus', 'H2', `Shortlisted · ${selected.candidate.name}`)
               log('Recruiter', 'Shortlisted', `${selected.candidate.name}: ${shortlistedReason}`, 'H2')
               setStep('H3')
             }}>Shortlist candidate</button>
           </div>
           <div className="card">
             <h1>Disqualify weak match</h1>
-            <p>Example: Yusuf Al-Rashdi ({getMatchById('cand-yusuf')?.totalScore}%)</p>
+            <p>Example: Yusuf Al-Rashdi ({matchesMemo.find((m) => m.candidateId === 'cand-yusuf')?.totalScore}%)</p>
             <textarea placeholder="Reason for disqualify (required)" value={disqualifiedReason} onChange={(e) => setDisqualifiedReason(e.target.value)} />
             <button type="button" className="danger" disabled={!disqualifiedReason.trim()} onClick={() => {
               setPipeline({ disqualified: true })
+              syncIntegration('jadarah.pipelineStatus', 'H2', 'Disqualified · Yusuf Al-Rashdi (example)')
               log('Recruiter', 'Disqualified', `Yusuf Al-Rashdi: ${disqualifiedReason}`, 'H2')
             }}>{pipeline.disqualified ? 'Disqualified · reason recorded' : 'Disqualify (example)'}</button>
           </div>
@@ -219,7 +235,7 @@ export function HrPortal() {
         <section className="stack">
           <header className="section-head">
             <h1>H3 · Review interview recording</h1>
-            <p className="muted">HR-only · avatar replay + bilingual transcript · candidate cannot access.</p>
+            <p className="muted">HR-only · avatar replay + transcript · candidate cannot access.</p>
           </header>
           <div className="kpi-row compact">
             <div className="kpi-card"><span>Assessment</span><strong>{assessmentScore || '—'}%</strong></div>
@@ -239,7 +255,7 @@ export function HrPortal() {
       {step === 'H4' && (
         <section className="card stack final-decision-screen">
           <h1>H4 · Final human decision</h1>
-          <p>AI provides recommendation only — recruiter holds final authority with mandatory reason.</p>
+          <p>AI provides recommendation only — recruiter holds final authority. Outcome syncs to simulated Jadarah + Oracle EBS endpoints.</p>
 
           <div className="ai-rec-card">
             <span className="ai-label">AI recommendation</span>
@@ -256,7 +272,7 @@ export function HrPortal() {
             </button>
           </div>
 
-          <textarea placeholder="Final decision reason (required for audit)" value={finalReason} onChange={(e) => setFinalReason(e.target.value)} />
+          <textarea placeholder="Final decision reason (required)" value={finalReason} onChange={(e) => setFinalReason(e.target.value)} />
 
           <button
             type="button"
@@ -264,6 +280,13 @@ export function HrPortal() {
             disabled={!finalReason.trim() || !decisionType}
             onClick={() => {
               setPipeline({ finalDecisionMade: true, finalDecisionType: decisionType })
+              if (decisionType === 'hire') {
+                syncIntegration('jadarah.hireOutcome', 'H4', finalReason)
+                syncIntegration('oracle.requisitionSync', 'H4', FINANCE_JOB.title)
+                syncIntegration('oracle.hirePersonStub', 'H4', selected.candidate.name)
+              } else {
+                syncIntegration('jadarah.rejectOutcome', 'H4', finalReason)
+              }
               log('Recruiter', decisionType === 'hire' ? 'Hire confirmed' : 'Reject confirmed', finalReason, 'H4')
               setStep('H5')
             }}
@@ -275,43 +298,15 @@ export function HrPortal() {
 
       {step === 'H5' && (
         <section className="stack">
-          <header className="section-head dashboard-head">
-            <div>
-              <h1>H5 · Audit &amp; reports</h1>
-              <p>Full traceability — timestamp × role × action × detail</p>
-            </div>
-            <button type="button" onClick={exportAuditCsv}><Download size={16} /> Export audit CSV</button>
-          </header>
-
-          <div className="card audit-full-page">
-            <table className="data-table audit-table">
-              <thead>
-                <tr><th>Timestamp</th><th>Step</th><th>Actor</th><th>Action</th><th>Detail</th></tr>
-              </thead>
-              <tbody>
-                {auditLog.map((e) => (
-                  <tr key={e.id}>
-                    <td>{formatAuditTime(e.timestamp)}</td>
-                    <td><code>{e.step}</code></td>
-                    <td>{e.actor}</td>
-                    <td><strong>{e.action}</strong></td>
-                    <td>{e.detail}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
           <div className="closing-frame card">
-            <h2>Demo journey complete</h2>
+            <h1>H5 · Demo journey complete</h1>
             <ul className="closing-list">
               <li>Dual portals — candidate privacy &amp; HR control</li>
               <li>Evidence-linked AI — parsing, matching, scoring</li>
               <li>Human-in-the-loop — shortlist + final {pipeline.finalDecisionType === 'hire' ? 'hire' : pipeline.finalDecisionType === 'reject' ? 'reject' : 'decision'}</li>
-              <li>Bilingual interview — EN + AR with avatar recording</li>
-              <li>Full audit trail — {auditLog.length} events logged</li>
+              <li>AI avatar interview — recorded for HR review</li>
             </ul>
-            <p className="muted tiny">Production: live Jadarah · on-prem models · production ASR/TTS · lip-sync avatar</p>
+            <p className="muted tiny">Production: live Jadarah + Oracle EBS · on-prem models · production ASR/TTS · lip-sync avatar</p>
           </div>
         </section>
       )}

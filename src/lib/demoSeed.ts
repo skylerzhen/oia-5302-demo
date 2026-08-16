@@ -1,10 +1,33 @@
 import type { DemoSession } from './session'
 import { INTERVIEW_PRESET } from '../data/questions'
-import { buildArabicFollowUp, buildInterviewFollowUp } from './matching'
+import { primaryCandidateProfileFields } from '../data/candidates'
+import { buildInterviewFollowUp } from './matching'
+
+/** Pre-unlock C1–C3 so reviewers can jump straight to the avatar interview. */
+export function createDemoCandidateC4Patch(): Partial<DemoSession> {
+  return {
+    candidateStep: 'C4',
+    offline: true,
+    fields: primaryCandidateProfileFields(),
+    pipeline: {
+      profileSubmitted: true,
+      diffAccepted: true,
+      assessmentSubmitted: true,
+      interviewCompleted: false,
+      shortlisted: false,
+      disqualified: false,
+      finalDecisionMade: false,
+      finalDecisionType: null,
+    },
+    assessmentScore: 75,
+    interviewTurns: [],
+  }
+}
 
 /** Seed data so HR portal can be demoed without walking candidate flow first. */
 export function createDemoPipelinePatch(): Partial<DemoSession> {
   return {
+    fields: primaryCandidateProfileFields(),
     pipeline: {
       profileSubmitted: true,
       diffAccepted: true,
@@ -30,8 +53,6 @@ export function createDemoPipelinePatch(): Partial<DemoSession> {
         language: 'en',
         text: buildInterviewFollowUp('quarterly portfolio variance review'),
       },
-      { id: 'seed-ar', speaker: 'candidate', language: 'ar', text: 'أعددنا تقريراً ربع سنوياً يوضح التباين بين التوقعات والنتائج الفعلية.' },
-      { id: 'seed-fu-ar', speaker: 'avatar', language: 'ar', text: buildArabicFollowUp() },
     ],
   }
 }

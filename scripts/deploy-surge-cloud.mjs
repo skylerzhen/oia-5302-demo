@@ -1,10 +1,7 @@
 import { spawnSync } from 'node:child_process'
 
-const apiUrl = process.argv[2]?.replace(/\/$/, '')
-if (!apiUrl) {
-  console.error('Usage: npm run deploy:surge:cloud -- https://your-llm-api.example.com')
-  process.exit(1)
-}
+const DEFAULT_API_URL = 'https://oia-5302-demo.onrender.com'
+const apiUrl = (process.argv[2] ?? process.env.VITE_LLM_API_URL ?? DEFAULT_API_URL).replace(/\/$/, '')
 
 console.log(`Building frontend with VITE_LLM_API_URL=${apiUrl}`)
 

@@ -1,13 +1,18 @@
 import { useEffect, useState } from 'react'
 import { createAuditEntry } from './lib/audit'
 import {
+  createSimulatedIntegrationSync,
+  formatIntegrationAuditDetail,
+} from './lib/simulatedIntegrations'
+import {
   clearSession,
   defaultSession,
   loadSession,
   saveSession,
   type DemoSession,
 } from './lib/session'
-import { createDemoPipelinePatch } from './lib/demoSeed'
+import { createDemoPipelinePatch, createDemoCandidateC4Patch } from './lib/demoSeed'
+import { readDemoJumpTarget } from './lib/demoJump'
 import { enableExternalEgressGuard } from './lib/egressGuard'
 import { RoleSelect } from './components/RoleSelect'
 import { CandidatePortal } from './components/CandidatePortal'
@@ -41,6 +46,27 @@ export default function App() {
     }))
   }
 
+  function syncIntegration(
+    key: import('./lib/simulatedIntegrations').SimulatedIntegrationKey,
+    step: string,
+    detail?: string,
+  ) {
+    const event = createSimulatedIntegrationSync(key, step)
+    patchSession((prev) => ({
+      integrationSyncs: [...prev.integrationSyncs, event],
+      auditLog: [
+        ...prev.auditLog,
+        createAuditEntry(
+          'Integration',
+          `${event.systemLabel} sync (simulated)`,
+          formatIntegrationAuditDetail(event, detail),
+          step,
+        ),
+      ],
+    }))
+    return event
+  }
+
   function setPipeline(patch: Partial<PipelineStatus>) {
     patchSession((prev) => ({ pipeline: { ...prev.pipeline, ...patch } }))
   }
@@ -69,6 +95,22 @@ export default function App() {
 
       if (role === 'candidate') {
         const fresh = defaultSession()
+        const jump = readDemoJumpTarget()
+        if (jump === 'c4') {
+          return {
+            ...fresh,
+            role: 'candidate',
+            ...createDemoCandidateC4Patch(),
+            auditLog: [
+              createAuditEntry(
+                'System',
+                'Demo shortcut',
+                'C1–C3 skipped via ?demo=c4 — ready for avatar interview',
+                'C4',
+              ),
+            ],
+          }
+        }
         return {
           ...fresh,
           role: 'candidate',
@@ -103,17 +145,25 @@ export default function App() {
     }))
   }
 
+  function seedDemoForCandidateC4() {
+    patchSession((prev) => ({
+      ...createDemoCandidateC4Patch(),
+      auditLog: [
+        ...prev.auditLog,
+        createAuditEntry('System', 'Demo shortcut', 'C1–C3 skipped — jumped to avatar interview', 'C4'),
+      ],
+    }))
+  }
+
   const ctx: DemoContextValue = {
     role: session.role,
     setRole: selectRole,
     offline: session.offline,
     setOffline: (offline) => patchSession({ offline }),
-    uiLocale: session.uiLocale,
-    setUiLocale: (uiLocale) => patchSession({ uiLocale }),
-    toggleUiLocale: () =>
-      patchSession((prev) => ({ uiLocale: prev.uiLocale === 'en' ? 'ar' : 'en' })),
     auditLog: session.auditLog,
     log,
+    integrationSyncs: session.integrationSyncs,
+    syncIntegration,
     pipeline: session.pipeline,
     setPipeline,
     fields: session.fields,
@@ -140,6 +190,7 @@ export default function App() {
     setHrStep: (hrStep) => patchSession({ hrStep }),
     logout,
     seedDemoForHr,
+    seedDemoForCandidateC4,
   }
 
   if (!session.role) {

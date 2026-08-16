@@ -1,5 +1,3 @@
-export type SpeechLanguage = 'en' | 'ar'
-
 interface SpeechRecognitionResultLike {
   isFinal: boolean
   0: { transcript: string }
@@ -37,70 +35,106 @@ function recognitionCtor() {
   return window.SpeechRecognition ?? window.webkitSpeechRecognition ?? null
 }
 
-function localeFor(language: SpeechLanguage) {
-  return language === 'ar' ? 'ar-SA' : 'en-US'
+export interface SpeechCaptureSession {
+  finish: () => Promise<string>
+  cancel: () => void
 }
 
-export function listenForSpeech(language: SpeechLanguage, signal?: AbortSignal): Promise<string> {
+/** Start browser speech recognition; caller must invoke finish() when the user is done speaking. */
+export function startSpeechCapture(signal?: AbortSignal): SpeechCaptureSession {
   const Ctor = recognitionCtor()
   if (!Ctor) {
-    return Promise.reject(new Error('Browser speech recognition is not supported in this browser.'))
+    throw new Error('Browser speech recognition is not supported in this browser.')
   }
 
-  return new Promise((resolve, reject) => {
-    const recognition = new Ctor()
-    recognition.lang = localeFor(language)
-    recognition.continuous = false
-    recognition.interimResults = true
+  const recognition = new Ctor()
+  recognition.lang = 'en-US'
+  recognition.continuous = true
+  recognition.interimResults = true
 
-    let transcript = ''
+  let transcript = ''
+  let cancelled = false
+  let pendingFinish: {
+    resolve: (value: string) => void
+    reject: (reason: Error) => void
+  } | null = null
 
-    const finish = (fn: () => void) => {
-      recognition.onresult = null
-      recognition.onerror = null
-      recognition.onend = null
-      signal?.removeEventListener('abort', onAbort)
-      fn()
-    }
+  const cleanup = () => {
+    recognition.onresult = null
+    recognition.onerror = null
+    recognition.onend = null
+    signal?.removeEventListener('abort', onAbort)
+  }
 
-    const onAbort = () => {
-      try {
-        recognition.abort()
-      } catch {
-        recognition.stop()
-      }
-      finish(() => reject(new DOMException('Speech capture interrupted', 'AbortError')))
-    }
-
-    if (signal?.aborted) {
-      onAbort()
-      return
-    }
-    signal?.addEventListener('abort', onAbort, { once: true })
-
-    recognition.onresult = (event) => {
-      transcript = Array.from(event.results)
-        .slice(event.resultIndex)
-        .map((result) => result[0]?.transcript ?? '')
-        .join(' ')
-        .trim()
-    }
-
-    recognition.onerror = (event) => {
-      finish(() => reject(new Error(event.error || 'Speech recognition failed')))
-    }
-
-    recognition.onend = () => {
-      finish(() => {
-        if (transcript) resolve(transcript)
-        else reject(new Error('No speech detected. Try again or type your answer.'))
-      })
-    }
-
+  const onAbort = () => {
+    cancelled = true
     try {
-      recognition.start()
-    } catch (error) {
-      finish(() => reject(error instanceof Error ? error : new Error('Could not start microphone')))
+      recognition.abort()
+    } catch {
+      recognition.stop()
     }
-  })
+  }
+
+  if (signal?.aborted) onAbort()
+  else signal?.addEventListener('abort', onAbort, { once: true })
+
+  recognition.onresult = (event) => {
+    transcript = Array.from(event.results)
+      .map((result) => result[0]?.transcript ?? '')
+      .join(' ')
+      .trim()
+  }
+
+  recognition.onerror = (event) => {
+    if (cancelled && event.error === 'aborted') return
+    const error = new Error(event.error || 'Speech recognition failed')
+    pendingFinish?.reject(error)
+    pendingFinish = null
+    cleanup()
+  }
+
+  recognition.onend = () => {
+    if (pendingFinish) {
+      if (cancelled) {
+        pendingFinish.reject(new DOMException('Speech capture interrupted', 'AbortError'))
+      } else if (transcript) {
+        pendingFinish.resolve(transcript)
+      } else {
+        pendingFinish.reject(new Error('No speech detected. Try again or type your answer.'))
+      }
+      pendingFinish = null
+    }
+    cleanup()
+  }
+
+  try {
+    recognition.start()
+  } catch (error) {
+    cleanup()
+    throw error instanceof Error ? error : new Error('Could not start microphone')
+  }
+
+  function finish(): Promise<string> {
+    if (pendingFinish) return pendingFinish as unknown as Promise<string>
+    return new Promise<string>((resolve, reject) => {
+      pendingFinish = { resolve, reject }
+      try {
+        recognition.stop()
+      } catch (error) {
+        pendingFinish = null
+        reject(error instanceof Error ? error : new Error('Could not stop microphone'))
+      }
+    })
+  }
+
+  function cancel() {
+    cancelled = true
+    try {
+      recognition.abort()
+    } catch {
+      recognition.stop()
+    }
+  }
+
+  return { finish, cancel }
 }

@@ -39,7 +39,6 @@ export function InterviewReviewPanel({ turns }: InterviewReviewPanelProps) {
       <div className="interview-review-player">
         <AvatarPanel
           speaking={playing && active?.speaker === 'avatar'}
-          language={captionTurn?.language ?? 'en'}
           caption={captionTurn?.text ?? 'Select a turn to preview'}
         />
         <div className="playback-controls">
@@ -58,10 +57,9 @@ export function InterviewReviewPanel({ turns }: InterviewReviewPanelProps) {
             key={t.id}
             type="button"
             className={`turn turn-btn ${t.speaker} ${idx === activeIndex ? 'active-turn' : ''}`}
-            dir={t.language === 'ar' ? 'rtl' : 'ltr'}
             onClick={() => { setActiveIndex(idx); setPlaying(false) }}
           >
-            <strong>{t.speaker} · {t.language.toUpperCase()}</strong>
+            <strong>{t.speaker}</strong>
             <p>{t.text}</p>
           </button>
         ))}

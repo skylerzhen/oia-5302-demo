@@ -1,29 +1,32 @@
 import { useEffect, useRef, useState } from 'react'
-import { CheckCircle2, Play, Upload } from 'lucide-react'
+import { CheckCircle2, FileUp, Play, Upload } from 'lucide-react'
 import { useDemo } from '../context/DemoContext'
 import { AvatarPanel } from './AvatarPanel'
 import { VoiceAnswerInput } from './VoiceAnswerInput'
 import { EvidenceModal } from './EvidenceModal'
 import { SourceDocumentModal } from './SourceDocumentModal'
+import { CvParseConfirmModal } from './CvParseConfirmModal'
 import { Layout } from './Layout'
-import {
-  CV_UPLOAD_SAMPLES,
-  CV_V2_DIFF,
-  PRIMARY_CANDIDATE_ID,
-} from '../data/candidates'
+import { CV_UPLOAD_SAMPLES, CV_V2_DIFF, emptyProfileFields } from '../data/candidates'
+import { resolveSampleProfileId } from '../data/cvParseProfiles'
 import { FINANCE_JOB } from '../data/job'
-import { MCQ_QUESTIONS } from '../data/questions'
+import { MCQ_QUESTIONS, INTERVIEW_PRESET } from '../data/questions'
 import { CANDIDATE_STEPS } from '../lib/demo'
 import { localAi } from '../lib/localAi'
-import { preloadSpeechVoices, speakInterviewLine } from '../lib/voiceSpeak'
+import { preloadSpeechVoices, speakInterviewLine, warmInterviewSpeech } from '../lib/voiceSpeak'
+import { unlockAudioPlayback } from '../lib/audioUnlock'
+import { avatarLipSyncBus } from '../lib/avatarLipSyncBus'
 import { controlledViewUrl } from '../lib/controlledDocUrl'
 import { applyParsedFields, runCvUploadFlow, type CvUploadProgress } from '../lib/cvUploadFlow'
+import type { CvParseFieldResult } from '../data/cvParseProfiles'
 import {
   buildImprovementTips,
+  buildInterviewFollowUp,
   getInterviewUiPhase,
-  getMatchById,
   type InterviewUiPhase,
 } from '../lib/matching'
+import { getPrimaryMatch, loadLlmMatches } from '../lib/llmMatching'
+import type { CandidateMatchWithTips } from '../lib/matching'
 import { scrollElementIntoContent, scrollPageToTop } from '../lib/scrollPageToTop'
 import type { CandidateStepId, FieldStatus, InterviewTurn, Viseme } from '../types'
 
@@ -35,10 +38,11 @@ function statusLabel(status: FieldStatus): string {
 
 export function CandidatePortal() {
   const {
-    offline, setOffline, uiLocale, toggleUiLocale, auditLog, log, pipeline, setPipeline,
+    offline, setOffline, log, integrationSyncs, syncIntegration,
+    pipeline, setPipeline,
     fields, setFields, interviewTurns, setInterviewTurns,
     assessmentScore, setAssessmentScore,
-    candidateStep: step, setCandidateStep: setStep, logout,
+    candidateStep: step, setCandidateStep: setStep, logout, seedDemoForCandidateC4,
   } = useDemo()
 
   const [uploadedSamples, setUploadedSamples] = useState<string[]>([])
@@ -50,9 +54,7 @@ export function CandidatePortal() {
   const [examDurationSec, setExamDurationSec] = useState(0)
   const [interviewStarted, setInterviewStarted] = useState(() => interviewTurns.length > 0)
   const [candidateAnswerEn, setCandidateAnswerEn] = useState('')
-  const [candidateAnswerAr, setCandidateAnswerAr] = useState('')
   const [avatarSpeaking, setAvatarSpeaking] = useState(false)
-  const [avatarLanguage, setAvatarLanguage] = useState<'en' | 'ar'>('en')
   const [avatarCaption, setAvatarCaption] = useState('')
   const [avatarExpression, setAvatarExpression] = useState<'neutral' | 'supportive' | 'curious' | 'gesture'>('neutral')
   const [supportivePrompt, setSupportivePrompt] = useState('')
@@ -61,7 +63,19 @@ export function CandidatePortal() {
   const [localAiMode, setLocalAiMode] = useState<'model' | 'adapter-fallback' | 'browser' | 'unavailable'>('unavailable')
   const [llmBusy, setLlmBusy] = useState(false)
   const [llmError, setLlmError] = useState('')
+  const [matchLoading, setMatchLoading] = useState(false)
+  const [matchError, setMatchError] = useState('')
+  const [llmMatch, setLlmMatch] = useState<CandidateMatchWithTips | null>(null)
+  const [matchMode, setMatchMode] = useState<'model' | 'adapter-fallback' | 'browser' | 'unavailable'>('unavailable')
   const [scanImported, setScanImported] = useState(false)
+  const [profileFromCv, setProfileFromCv] = useState(() => fields.some((f) => f.value.trim()))
+  const [parsePreview, setParsePreview] = useState<{
+    sampleId: string
+    fileName: string
+    fields: CvParseFieldResult[]
+    isScannedPdf: boolean
+  } | null>(null)
+  const [dragActive, setDragActive] = useState(false)
   const [reviewReady, setReviewReady] = useState(false)
   const [uploadBusy, setUploadBusy] = useState(false)
   const [uploadError, setUploadError] = useState('')
@@ -72,18 +86,68 @@ export function CandidatePortal() {
   const speechAbortRef = useRef<AbortController | null>(null)
   const confirmFieldsRef = useRef<HTMLDivElement | null>(null)
   const submissionReviewRef = useRef<HTMLElement | null>(null)
+  const c3SectionRef = useRef<HTMLElement | null>(null)
   const stepTopRef = useRef<HTMLDivElement | null>(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   function scrollToElement(element: HTMLElement | null) {
     scrollElementIntoContent(element)
   }
 
-  const match = getMatchById(PRIMARY_CANDIDATE_ID)
+  function stopInterviewSpeech() {
+    speechAbortRef.current?.abort()
+    speechAbortRef.current = null
+    stopAvatarRef.current = null
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel()
+    avatarLipSyncBus.reset()
+    setAvatarSpeaking(false)
+    setAvatarViseme('rest')
+  }
+
   const interviewPhase = getInterviewUiPhase(interviewTurns, pipeline.interviewCompleted)
+  const match = llmMatch
+
+  useEffect(() => {
+    if (step !== 'C5') return
+
+    let active = true
+    setMatchLoading(true)
+    setMatchError('')
+    loadLlmMatches(fields)
+      .then(({ matches, mode }) => {
+        if (!active) return
+        const primary = getPrimaryMatch(matches)
+        setLlmMatch(primary ?? null)
+        setMatchMode(mode)
+        if (primary) {
+          log('System', 'LLM CV–JD match scored', `${primary.totalScore}% · ${primary.matchedCount}/${primary.totalDimensions} dimensions · mode ${mode}`, 'C5')
+        }
+      })
+      .catch((error: Error) => {
+        if (!active) return
+        setMatchError(error.message)
+        setLlmMatch(null)
+        log('System', 'LLM match failed', error.message, 'C5')
+      })
+      .finally(() => {
+        if (active) setMatchLoading(false)
+      })
+
+    return () => { active = false }
+  }, [fields, log, step])
 
   useEffect(() => {
     if (step === 'C3' && !examSubmitted && !examStartedAt) setExamStartedAt(Date.now())
   }, [examStartedAt, examSubmitted, step])
+
+  useEffect(() => {
+    if (step === 'C4') return
+    stopInterviewSpeech()
+  }, [step])
+
+  useEffect(() => {
+    return () => stopInterviewSpeech()
+  }, [])
 
   useEffect(() => {
     const raf = requestAnimationFrame(() => {
@@ -97,6 +161,16 @@ export function CandidatePortal() {
     if (step !== 'C4' || pipeline.interviewCompleted) return
     setInterviewStarted(interviewTurns.length > 0)
   }, [step, pipeline.interviewCompleted, interviewTurns.length])
+
+  useEffect(() => {
+    if (!examSubmitted) return
+    requestAnimationFrame(() => scrollPageToTop())
+  }, [examSubmitted])
+
+  useEffect(() => {
+    if (step !== 'C3' && step !== 'C4') return
+    warmInterviewSpeech()
+  }, [step])
 
   useEffect(() => {
     preloadSpeechVoices()
@@ -122,7 +196,7 @@ export function CandidatePortal() {
     label: string
     filePath?: string
     file?: File
-    isArabicScan?: boolean
+    isScannedPdf?: boolean
   }) {
     if (uploadBusy || uploadedSamples.includes(input.sampleId)) return
     setUploadBusy(true)
@@ -136,20 +210,17 @@ export function CandidatePortal() {
           filePath: input.filePath,
           file: input.file,
           fileName: input.file?.name ?? input.label.split(' · ')[0] ?? input.label,
-          isArabicScan: input.isArabicScan,
+          isScannedPdf: input.isScannedPdf,
         },
         setUploadProgress,
       )
-      setUploadedSamples((current) => [...current, input.sampleId])
-      setFields((prev) => applyParsedFields(prev, result.fields))
-      setScanImported(result.isArabicScan)
+      setParsePreview({
+        sampleId: input.sampleId,
+        fileName: result.fileName,
+        fields: result.fields,
+        isScannedPdf: result.isScannedPdf,
+      })
       log('System', 'LLM CV parsing invoked', `${result.fileName}; ${result.fileSize} bytes; mode: ${result.mode}`, 'C1')
-      if (result.isArabicScan) {
-        log('Candidate', 'Arabic scanned CV uploaded', `${result.fileName}; education requires review`, 'C1')
-      } else {
-        log('Candidate', 'CV uploaded', `${result.fileName}; fields mapped from controlled input`, 'C1')
-      }
-      scrollToElement(confirmFieldsRef.current)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Upload failed'
       setUploadError(message)
@@ -171,38 +242,66 @@ export function CandidatePortal() {
     const file = files?.[0]
     if (!file || uploadBusy) return
     const normalized = file.name.toLowerCase()
-    const isArabicScan = normalized.includes('arabic') || normalized.includes('noor') || normalized.includes('scan')
-    const sampleId = isArabicScan ? 'pdf-ar-scan' : normalized.endsWith('.docx') ? 'docx-en' : `local-${file.name}`
-    void processCvUpload({ sampleId, label: file.name, file, isArabicScan })
+    const isScannedPdf = normalized.includes('noor') || normalized.includes('scan')
+    const sampleId = resolveSampleProfileId(file.name)
+      ?? (isScannedPdf ? 'pdf-scan' : normalized.endsWith('.docx') ? 'docx-en' : `local-${normalized}`)
+    void processCvUpload({ sampleId, label: file.name, file, isScannedPdf })
   }
 
-  function candidateProfileInput() {
-    return Object.fromEntries(fields.map((field) => [field.key, field.value]))
+  function acceptParsePreview() {
+    if (!parsePreview) return
+    const nextFields = applyParsedFields(emptyProfileFields(), parsePreview.fields)
+    setFields(nextFields)
+    setScanImported(parsePreview.isScannedPdf)
+    setProfileFromCv(true)
+    setUploadedSamples((current) => (
+      current.includes(parsePreview.sampleId) ? current : [...current, parsePreview.sampleId]
+    ))
+    log(
+      'Candidate',
+      parsePreview.isScannedPdf ? 'Scanned CV accepted' : 'CV accepted',
+      `${parsePreview.fileName}; profile fields applied after candidate review`,
+      'C1',
+    )
+    setParsePreview(null)
+    window.setTimeout(() => scrollToElement(confirmFieldsRef.current), 0)
   }
 
-  async function generateAvatarQuestion(language: 'en' | 'ar', purpose: 'opening' | 'arabic-segment') {
-    const result = await localAi.generateQuestion({
-      language,
-      purpose,
-      candidateProfile: candidateProfileInput(),
-    })
-    setLocalAiMode(result.mode)
-    return result.text
+  function cancelParsePreview() {
+    setParsePreview(null)
+    setUploadProgress({ stage: 'idle', progress: 0, message: '' })
   }
 
-  async function generateAvatarFollowUp(answer: string, language: 'en' | 'ar', priorTurns = interviewTurns) {
-    const result = await localAi.followUp({
-      answer,
-      language,
-      priorTurns: priorTurns.map((turn) => ({
-        speaker: turn.speaker,
-        language: turn.language,
-        text: turn.text,
-      })),
-    })
-    setLocalAiMode(result.mode)
-    log('System', 'LLM follow-up generated', `Mode: ${result.mode}; evidence: ${result.evidencePhrase}`, 'C4')
-    return result.text
+  function handleDrop(event: React.DragEvent<HTMLDivElement>) {
+    event.preventDefault()
+    setDragActive(false)
+    handleLocalCvUpload(event.dataTransfer.files)
+  }
+
+  async function generateAvatarFollowUp(answer: string, priorTurns = interviewTurns) {
+    const candidateTurnCount = priorTurns.filter((turn) => turn.speaker === 'candidate').length
+    try {
+      const result = await Promise.race([
+        localAi.followUp({
+          answer,
+          priorTurns: priorTurns.map((turn) => ({
+            speaker: turn.speaker,
+            language: turn.language,
+            text: turn.text,
+          })),
+        }),
+        new Promise<never>((_, reject) => {
+          window.setTimeout(() => reject(new Error('LLM follow-up timed out')), 12_000)
+        }),
+      ])
+      setLocalAiMode(result.mode)
+      log('System', 'LLM follow-up generated', `Mode: ${result.mode}; evidence: ${result.evidencePhrase}`, 'C4')
+      return result.text
+    } catch (error) {
+      const fallback = buildInterviewFollowUp(answer, Math.max(0, candidateTurnCount - 1))
+      log('System', 'LLM follow-up fallback', error instanceof Error ? error.message : 'timeout', 'C4')
+      return fallback
+    }
   }
 
   async function runLlmInterviewAction(action: () => Promise<void>) {
@@ -236,6 +335,7 @@ export function CandidatePortal() {
   }
 
   const canSubmitProfile =
+    profileFromCv &&
     uploadedSamples.length > 0 &&
     fields.every((f) => f.value.trim() && f.status !== 'missing')
 
@@ -257,7 +357,6 @@ export function CandidatePortal() {
 
   async function speakAvatar(turn: InterviewTurn) {
     setInterviewTurns((prev) => [...prev, turn])
-    setAvatarLanguage(turn.language)
     setAvatarCaption(turn.text)
     setAvatarExpression(turn.expression ?? 'neutral')
     setAvatarSpeaking(true)
@@ -309,40 +408,88 @@ export function CandidatePortal() {
     }, 3000)
   }
 
+  function jumpToC4Demo() {
+    seedDemoForCandidateC4()
+    setExamSubmitted(true)
+    setExamBreakdown(MCQ_QUESTIONS.map((q) => ({ id: q.id, correct: true })))
+    setInterviewStarted(false)
+    setInterviewTurns([])
+    setStep('C4')
+  }
+
   return (
     <>
       <Layout
         role="candidate"
         offline={offline}
         onToggleOffline={() => setOffline(!offline)}
-        uiLocale={uiLocale}
-        onToggleLocale={toggleUiLocale}
         activeStep={step}
         steps={steps}
         onStepChange={(s) => setStep(s as CandidateStepId)}
         onLogout={logout}
-        auditLog={auditLog.filter((e) => e.actor === 'Candidate' || e.actor === 'System')}
+        integrationSyncs={integrationSyncs}
+        demoShortcut={
+          step === 'C4' ? null : (
+            <button type="button" className="demo-shortcut-btn" onClick={jumpToC4Demo}>
+              Skip to C4 interview (demo)
+            </button>
+          )
+        }
       >
           <div ref={stepTopRef} className="step-scroll-anchor" aria-hidden="true" />
           {step === 'C1' && (
             <section className="stack">
               <header className="section-head">
                 <h1>C1 · Apply & confirm profile</h1>
-                <p>Upload CV → review parsed fields → submit to Jadarah (simulated).</p>
+                <p>Upload your CV first — AI extracts fields for you to review, then submit to Jadarah (simulated).</p>
               </header>
-              <div className="card grid-2">
-                <div>
+              <div className={`card c1-layout ${profileFromCv ? 'grid-2' : 'c1-upload-only'}`}>
+                <div className="c1-upload-column">
                   <h3>Upload CV</h3>
-                  <p className="muted tiny">Select a controlled sample or a local file. The app reads the document, uploads it to the local parser, then maps extracted fields.</p>
+                  <p className="muted tiny">Drop a PDF/DOCX here or pick a demo sample. Fields appear only after you confirm the extraction.</p>
+
+                  <div
+                    className={`cv-drop-zone ${dragActive ? 'active' : ''} ${uploadBusy ? 'busy' : ''}`}
+                    onDragEnter={(event) => { event.preventDefault(); setDragActive(true) }}
+                    onDragOver={(event) => { event.preventDefault(); setDragActive(true) }}
+                    onDragLeave={(event) => {
+                      event.preventDefault()
+                      if (event.currentTarget.contains(event.relatedTarget as Node)) return
+                      setDragActive(false)
+                    }}
+                    onDrop={handleDrop}
+                    onClick={() => !uploadBusy && fileInputRef.current?.click()}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault()
+                        if (!uploadBusy) fileInputRef.current?.click()
+                      }
+                    }}
+                    role="button"
+                    tabIndex={0}
+                  >
+                    <FileUp size={28} aria-hidden />
+                    <strong>{dragActive ? 'Drop to upload' : 'Drag & drop your CV here'}</strong>
+                    <span>or click to browse · PDF, DOC, DOCX</span>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      hidden
+                      accept=".pdf,.doc,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                      disabled={uploadBusy}
+                      onChange={(event) => handleLocalCvUpload(event.target.files)}
+                    />
+                  </div>
+
                   {(uploadBusy || uploadProgress.stage === 'done' || uploadProgress.stage === 'error' || uploadError) && (
                     <div className={`upload-progress ${uploadProgress.stage === 'idle' && uploadError ? 'error' : uploadProgress.stage}`}>
                       <div className="upload-progress-head">
                         <strong>
                           {uploadProgress.stage === 'reading' && 'Reading document'}
                           {uploadProgress.stage === 'uploading' && 'Uploading'}
-                          {uploadProgress.stage === 'parsing' && 'Parsing'}
-                          {uploadProgress.stage === 'mapping' && 'Mapping fields'}
-                          {uploadProgress.stage === 'done' && 'Complete'}
+                          {uploadProgress.stage === 'parsing' && 'AI parsing CV'}
+                          {uploadProgress.stage === 'mapping' && 'Preparing review'}
+                          {uploadProgress.stage === 'done' && 'Ready to review'}
                           {(uploadProgress.stage === 'error' || uploadError) && 'Upload failed'}
                         </strong>
                         <span>{uploadProgress.progress}%</span>
@@ -351,6 +498,8 @@ export function CandidatePortal() {
                       <p className="danger-text">{uploadError || uploadProgress.message}</p>
                     </div>
                   )}
+
+                  <p className="muted tiny sample-heading">Demo samples</p>
                   <ul className="upload-list">
                     {CV_UPLOAD_SAMPLES.map((sample) => (
                       <li key={sample.id}>
@@ -362,11 +511,11 @@ export function CandidatePortal() {
                               sampleId: sample.id,
                               label: sample.label,
                               filePath: sample.filePath,
-                              isArabicScan: sample.id === 'pdf-ar-scan',
+                              isScannedPdf: sample.id === 'pdf-scan',
                             })
                           }}
                         >
-                          <Upload size={16} /> {uploadedSamples.includes(sample.id) ? 'Uploaded' : 'Upload'} {sample.label}
+                          <Upload size={16} /> {uploadedSamples.includes(sample.id) ? 'Applied' : 'Upload'} {sample.label}
                         </button>
                         <button
                           type="button"
@@ -382,71 +531,66 @@ export function CandidatePortal() {
                       </li>
                     ))}
                   </ul>
-                  <label className="local-upload">
-                    <span>Upload a local PDF or DOCX</span>
-                    <input
-                      type="file"
-                      accept=".pdf,.doc,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                      disabled={uploadBusy}
-                      onChange={(event) => handleLocalCvUpload(event.target.files)}
-                    />
-                  </label>
                 </div>
-                <div ref={confirmFieldsRef} className="cv-review-panel">
-                  <h3>Confirm extracted fields</h3>
-                  {scanImported && (
-                    <div className="parse-note">
-                      <strong>Arabic scanned PDF · local OCR</strong>
-                      <span>Education was extracted with 82% confidence and is marked for candidate review.</span>
+
+                {profileFromCv && (
+                  <div ref={confirmFieldsRef} className="cv-review-panel">
+                    <h3>Your profile</h3>
+                    <p className="muted tiny">Edit any field, then submit when everything looks correct.</p>
+                    {scanImported && (
+                      <div className="parse-note">
+                        <strong>Scanned PDF · local OCR</strong>
+                        <span>Education was extracted with lower confidence — please verify.</span>
+                      </div>
+                    )}
+                    <div className="field-grid">
+                      {fields.map((field) => (
+                        <label key={field.key} className={`field-row ${field.status}`}>
+                          <div className="field-head">
+                            <strong>{field.label}</strong>
+                            <span className={`pill ${field.status}`}>{statusLabel(field.status)}</span>
+                          </div>
+                          <input
+                            value={field.value}
+                            onChange={(e) => setFields((prev) => prev.map((f) => f.key === field.key ? { ...f, value: e.target.value, status: e.target.value ? 'parsed' : 'missing' } : f))}
+                          />
+                          <button type="button" className="linkish" onClick={() => setEvidenceModal({ title: field.label, evidence: field.evidence, source: field.source })}>Evidence</button>
+                        </label>
+                      ))}
                     </div>
-                  )}
-                  <div className="field-grid">
-                    {fields.map((field) => (
-                      <label key={field.key} className={`field-row ${field.status}`}>
-                        <div className="field-head">
-                          <strong>{uiLocale === 'ar' ? field.labelAr : field.label}</strong>
-                          <span className={`pill ${field.status}`}>{statusLabel(field.status)}</span>
-                        </div>
-                        <input
-                          value={field.value}
-                          onChange={(e) => setFields((prev) => prev.map((f) => f.key === field.key ? { ...f, value: e.target.value, status: e.target.value ? 'parsed' : 'missing' } : f))}
-                        />
-                        <button type="button" className="linkish" onClick={() => setEvidenceModal({ title: field.label, evidence: field.evidence, source: field.source })}>Evidence</button>
-                      </label>
-                    ))}
+                    <div className="actions">
+                      <button type="button" onClick={() => { setDraftSaved(true); log('Candidate', 'Draft saved', 'Profile wizard draft', 'C1') }}>Save draft</button>
+                      <button type="button" onClick={confirmAllFields}>Confirm all fields</button>
+                      <button
+                        type="button"
+                        className="primary"
+                        disabled={!canSubmitProfile}
+                        onClick={() => {
+                          setReviewReady(true)
+                        }}
+                      >
+                        Review & submit
+                      </button>
+                    </div>
+                    {!canSubmitProfile && (
+                      <p className="muted tiny">Fill any missing fields (or click Confirm all fields), then submit.</p>
+                    )}
+                    {draftSaved && <p className="ok-text">Draft saved.</p>}
                   </div>
-                  <div className="actions">
-                    <button type="button" onClick={() => { setDraftSaved(true); log('Candidate', 'Draft saved', 'Profile wizard draft', 'C1') }}>Save draft</button>
-                    <button type="button" onClick={confirmAllFields}>Confirm all fields</button>
-                    <button
-                      type="button"
-                      className="primary"
-                      disabled={!canSubmitProfile}
-                      onClick={() => {
-                        setReviewReady(true)
-                      }}
-                    >
-                      Review & submit
-                    </button>
-                  </div>
-                  {!canSubmitProfile && uploadedSamples.length > 0 && (
-                    <p className="muted tiny">Upload CV, fill missing fields (or click Confirm all fields), then submit.</p>
-                  )}
-                  {draftSaved && <p className="ok-text">Draft saved.</p>}
-                </div>
+                )}
               </div>
               {reviewReady && (
                 <section ref={submissionReviewRef} className="card submission-review">
                   <header className="section-head">
                     <div>
                       <h2>Review & submit</h2>
-                      <p>Final candidate confirmation before the simulated Jadarah write-back.</p>
+                      <p>Final candidate confirmation before simulated Jadarah profile write-back.</p>
                     </div>
                   </header>
                   <dl>
                     {fields.map((field) => (
                       <div key={field.key}>
-                        <dt>{uiLocale === 'ar' ? field.labelAr : field.label}</dt>
+                        <dt>{field.label}</dt>
                         <dd>{field.value || '—'}</dd>
                       </div>
                     ))}
@@ -455,6 +599,7 @@ export function CandidatePortal() {
                     <button type="button" onClick={() => setReviewReady(false)}>Back to edit</button>
                     <button type="button" className="primary" onClick={() => {
                       setPipeline({ profileSubmitted: true })
+                      syncIntegration('jadarah.profileWrite', 'C1', 'Candidate profile after review')
                       log('Candidate', 'Profile submitted', 'Simulated Jadarah profile write-back after candidate review', 'C1')
                       setStep('C2')
                     }}>
@@ -499,6 +644,7 @@ export function CandidatePortal() {
               </table>
               <button type="button" className="primary" onClick={() => {
                 setPipeline({ diffAccepted: true })
+                syncIntegration('jadarah.profileUpdate', 'C2', 'CV v2 diff accepted')
                 log('Candidate', 'Diff accepted', 'Profile updated from new CV', 'C2')
                 setStep('C3')
               }}>Accept & continue to assessment</button>
@@ -506,9 +652,9 @@ export function CandidatePortal() {
           )}
 
           {step === 'C3' && (
-            <section className="card stack">
+            <section ref={c3SectionRef} className="card stack">
               <h1>C3 · Assessment exam</h1>
-              <p className="muted">Bilingual MCQ · role-specific · auto-scored on submit.</p>
+              <p className="muted">Role-specific MCQ · auto-scored on submit.</p>
               <button
                 type="button"
                 className="source-file-link"
@@ -524,7 +670,6 @@ export function CandidatePortal() {
                   {MCQ_QUESTIONS.map((q) => (
                     <fieldset key={q.id} className="mcq">
                       <legend>{q.prompt}</legend>
-                      <p className="mcq-ar" dir="rtl">{q.promptAr}</p>
                       {q.options.map((opt, idx) => (
                         <label key={opt}><input type="radio" name={q.id} checked={mcqAnswers[q.id] === idx} onChange={() => setMcqAnswers({ ...mcqAnswers, [q.id]: idx })} />{opt}</label>
                       ))}
@@ -546,7 +691,9 @@ export function CandidatePortal() {
                       setAssessmentScore(score)
                       setExamDurationSec(durationSec)
                       setExamSubmitted(true)
+                      syncIntegration('jadarah.assessmentResult', 'C3', `Score ${score}% · ${durationSec}s`)
                       log('Candidate', 'Assessment submitted', `Score ${score}% · accuracy ${score}% · duration ${durationSec}s · benchmark 70%`, 'C3')
+                      requestAnimationFrame(() => scrollPageToTop())
                     }}
                   >
                     Submit exam
@@ -575,7 +722,6 @@ export function CandidatePortal() {
                     setInterviewTurns([])
                     setInterviewStarted(false)
                     setCandidateAnswerEn('')
-                    setCandidateAnswerAr('')
                     setAvatarCaption('')
                     setAvatarSpeaking(false)
                     setPipeline({ assessmentSubmitted: true, interviewCompleted: false })
@@ -595,14 +741,12 @@ export function CandidatePortal() {
                 <p>Candidate-only session · HR reviews recording separately · LLM: <strong>{localAiMode}</strong> · TTS: <strong>{speechStatus.tts}</strong> · ASR: <strong>{speechStatus.asr}</strong> · Lip-sync: <strong>{speechStatus.viseme}</strong></p>
               </header>
               <div className="interview-steps card">
-                <span className={interviewPhase !== 'idle' ? 'done' : 'active'}>1. English Q&amp;A</span>
-                <span className={interviewPhase === 'arabic_answer' || interviewPhase === 'ready_to_finish' ? 'done' : interviewPhase === 'english_done' ? 'active' : ''}>2. Arabic segment</span>
-                <span className={pipeline.interviewCompleted ? 'done' : ''}>3. Submit</span>
+                <span className={interviewPhase !== 'idle' ? 'done' : 'active'}>1. Interview Q&amp;A</span>
+                <span className={pipeline.interviewCompleted ? 'done' : interviewPhase === 'ready_to_finish' ? 'active' : ''}>2. Submit</span>
               </div>
               <div className="grid-2">
                 <AvatarPanel
                   speaking={avatarSpeaking}
-                  language={avatarLanguage}
                   expression={avatarExpression}
                   caption={avatarCaption || 'Start when ready'}
                   viseme={avatarSpeaking ? avatarViseme : undefined}
@@ -616,17 +760,18 @@ export function CandidatePortal() {
                   )}
                   {!interviewStarted ? (
                     <button type="button" className="primary" disabled={llmBusy} onClick={() => {
+                      unlockAudioPlayback()
                       void runLlmInterviewAction(async () => {
-                        const openingQuestion = await generateAvatarQuestion('en', 'opening')
                         setInterviewStarted(true)
-                        await speakAvatar({ id: nextTurnId('g'), speaker: 'avatar', language: 'en', text: openingQuestion, expression: 'gesture' })
+                        const openingQuestion = INTERVIEW_PRESET[0].text
+                        await speakAvatar({ id: nextTurnId('g'), speaker: 'avatar', language: 'en', text: openingQuestion, expression: 'neutral' })
                       })
-                    }}><Play size={16} /> {llmBusy ? 'Generating opening question…' : 'Start interview'}</button>
+                    }}><Play size={16} /> Start interview</button>
                   ) : (
                     <>
                       <div className="transcript">
                         {interviewTurns.map((t) => (
-                          <div key={t.id} className={`turn ${t.speaker}`} dir={t.language === 'ar' ? 'rtl' : 'ltr'}>
+                          <div key={t.id} className={`turn ${t.speaker}`}>
                             <strong>{t.speaker}</strong><p>{t.text}</p>
                           </div>
                         ))}
@@ -640,24 +785,25 @@ export function CandidatePortal() {
 
                       {interviewPhase === 'english_answer' && (
                         <div className="stack">
-                          <p className="muted tiny">Step 1/3 · Answer in English (microphone or typing), then continue to the Arabic segment.</p>
+                          <p className="muted tiny">Answer via microphone or typing, then submit when ready.</p>
                           <VoiceAnswerInput
                             key="c4-english-answer"
-                            language="en"
                             value={candidateAnswerEn}
                             onChange={setCandidateAnswerEn}
                             disabled={avatarSpeaking || llmBusy}
-                            placeholder="Your answer (English)..."
-                            submitLabel={llmBusy ? 'Generating follow-up…' : 'Send English answer'}
+                            placeholder="Your answer..."
+                            submitLabel={llmBusy ? 'Generating follow-up…' : 'Send answer'}
                             submitDisabled={llmBusy}
+                            asrProvider={speechStatus.asr}
                             onSubmit={() => {
+                              unlockAudioPlayback()
                               const ans = candidateAnswerEn.trim()
                               void runLlmInterviewAction(async () => {
                                 const candidateTurn = { id: nextTurnId('c-en'), speaker: 'candidate' as const, language: 'en' as const, text: ans }
                                 const updatedTurns = [...interviewTurns, candidateTurn]
                                 setInterviewTurns(updatedTurns)
                                 setCandidateAnswerEn('')
-                                const followUp = await generateAvatarFollowUp(ans, 'en', updatedTurns)
+                                const followUp = await generateAvatarFollowUp(ans, updatedTurns)
                                 await speakAvatar({ id: nextTurnId('fu'), speaker: 'avatar', language: 'en', text: followUp, expression: 'curious' })
                               })
                             }}
@@ -669,50 +815,13 @@ export function CandidatePortal() {
                         </div>
                       )}
 
-                      {interviewPhase === 'english_done' && (
-                        <div className="stack">
-                          <p className="ok-text">English segment complete. Continue to the required Arabic question.</p>
-                          <button type="button" className="primary" disabled={avatarSpeaking || llmBusy} onClick={() => {
-                            void runLlmInterviewAction(async () => {
-                              const arabicQuestion = await generateAvatarQuestion('ar', 'arabic-segment')
-                              await speakAvatar({ id: nextTurnId('ar-q'), speaker: 'avatar', language: 'ar', text: arabicQuestion, expression: 'neutral' })
-                            })
-                          }}>{llmBusy ? 'Generating Arabic question…' : 'Continue to Arabic segment →'}</button>
-                        </div>
-                      )}
-
-                      {interviewPhase === 'arabic_answer' && (
-                        <div className="stack">
-                          <p className="muted tiny">Step 2/3 · Answer in Arabic to finish the interview.</p>
-                          <VoiceAnswerInput
-                            key="c4-arabic-answer"
-                            language="ar"
-                            value={candidateAnswerAr}
-                            onChange={setCandidateAnswerAr}
-                            disabled={avatarSpeaking || llmBusy}
-                            placeholder="إجابتكم بالعربية..."
-                            submitLabel={llmBusy ? 'Generating follow-up…' : 'Send Arabic answer'}
-                            submitDisabled={llmBusy}
-                            onSubmit={() => {
-                              const ans = candidateAnswerAr.trim()
-                              void runLlmInterviewAction(async () => {
-                                const candidateTurn = { id: nextTurnId('c-ar'), speaker: 'candidate' as const, language: 'ar' as const, text: ans }
-                                const updatedTurns = [...interviewTurns, candidateTurn]
-                                setInterviewTurns(updatedTurns)
-                                setCandidateAnswerAr('')
-                                const followUp = await generateAvatarFollowUp(ans, 'ar', updatedTurns)
-                                await speakAvatar({ id: nextTurnId('fu-ar'), speaker: 'avatar', language: 'ar', text: followUp, expression: 'supportive' })
-                              })
-                            }}
-                          />
-                        </div>
-                      )}
-
                       {interviewPhase === 'ready_to_finish' && !pipeline.interviewCompleted && (
                         <div className="stack">
-                          <p className="ok-text">Both language segments recorded. Submit to unlock C5 and sync with HR review.</p>
+                          <p className="ok-text">Interview recorded. Submit to unlock C5 and sync with HR review.</p>
                           <button type="button" className="primary" onClick={() => {
+                            stopInterviewSpeech()
                             setPipeline({ interviewCompleted: true })
+                            syncIntegration('jadarah.interviewRecord', 'C4', `${interviewTurns.length} turns recorded`)
                             log('Candidate', 'Interview completed', 'Recording saved for HR review', 'C4')
                             setStep('C5')
                           }}>Submit interview &amp; continue →</button>
@@ -725,12 +834,27 @@ export function CandidatePortal() {
             </section>
           )}
 
-          {step === 'C5' && match && (
+          {step === 'C5' && (
             <section className="card stack">
               <h1>C5 · My match score & tips</h1>
-              <p>Match: <strong>{match.totalScore}%</strong> for {FINANCE_JOB.title}</p>
-              <p className="muted">Assessment: {assessmentScore}% · Interview submitted — awaiting HR decision.</p>
-              <ul>{buildImprovementTips(match).map((t) => <li key={t}>{t}</li>)}</ul>
+              {matchLoading && (
+                <p className="muted" role="status">Analyzing your CV against the job description…</p>
+              )}
+              {matchError && <p className="danger-text">{matchError}</p>}
+              {match && (
+                <>
+                  <p>Match: <strong>{match.totalScore}%</strong> for {FINANCE_JOB.title}</p>
+                  <p className="muted">
+                    LLM rubric · {match.matchedCount}/{match.totalDimensions} dimensions evidenced · mode: {matchMode}
+                  </p>
+                  <p className="muted">Assessment: {assessmentScore}% · Interview submitted — awaiting HR decision.</p>
+                  <ul>
+                    {(match.improvementTips?.length ? match.improvementTips : buildImprovementTips(match)).map((t) => (
+                      <li key={t}>{t}</li>
+                    ))}
+                  </ul>
+                </>
+              )}
               <button type="button" className="primary" onClick={() => setStep('C6')}>View application status</button>
             </section>
           )}
@@ -756,6 +880,15 @@ export function CandidatePortal() {
 
       {evidenceModal && <EvidenceModal {...evidenceModal} onClose={() => setEvidenceModal(null)} />}
       {sourceDoc && <SourceDocumentModal {...sourceDoc} onClose={() => setSourceDoc(null)} />}
+      {parsePreview && (
+        <CvParseConfirmModal
+          fileName={parsePreview.fileName}
+          fields={applyParsedFields(emptyProfileFields(), parsePreview.fields)}
+          isScannedPdf={parsePreview.isScannedPdf}
+          onConfirm={acceptParsePreview}
+          onCancel={cancelParsePreview}
+        />
+      )}
     </>
   )
 }
@@ -766,7 +899,6 @@ function interviewLoadingMessage(
   turnCount: number,
 ): string {
   if (!interviewStarted || turnCount === 0) return 'Generating opening question…'
-  if (phase === 'english_done') return 'Generating Arabic question…'
-  if (phase === 'english_answer' || phase === 'arabic_answer') return 'Generating follow-up question…'
+  if (phase === 'english_answer') return 'Generating follow-up question…'
   return 'AI is preparing the next step…'
 }

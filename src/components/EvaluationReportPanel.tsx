@@ -23,8 +23,8 @@ export function EvaluationReportPanel({ report }: EvaluationReportPanelProps) {
             </div>
             <div>
               <p>{dimension.rationale}</p>
-              <blockquote dir={dimension.evidence.language === 'ar' ? 'rtl' : 'ltr'}>
-                <span>Transcript evidence · {dimension.evidence.language.toUpperCase()}</span>
+              <blockquote>
+                <span>Transcript evidence</span>
                 {dimension.evidence.text}
               </blockquote>
             </div>

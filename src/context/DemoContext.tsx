@@ -3,11 +3,11 @@ import type {
   AuditEntry,
   CandidateStepId,
   HrStepId,
+  IntegrationSyncEvent,
   InterviewTurn,
   PipelineStatus,
   ProfileField,
   UserRole,
-  UiLocale,
 } from '../types'
 
 export interface DemoContextValue {
@@ -15,11 +15,14 @@ export interface DemoContextValue {
   setRole: (role: UserRole) => void
   offline: boolean
   setOffline: (v: boolean) => void
-  uiLocale: UiLocale
-  setUiLocale: (locale: UiLocale) => void
-  toggleUiLocale: () => void
   auditLog: AuditEntry[]
   log: (actor: string, action: string, detail: string, step: string) => void
+  integrationSyncs: IntegrationSyncEvent[]
+  syncIntegration: (
+    key: import('../lib/simulatedIntegrations').SimulatedIntegrationKey,
+    step: string,
+    detail?: string,
+  ) => IntegrationSyncEvent
   pipeline: PipelineStatus
   setPipeline: (patch: Partial<PipelineStatus>) => void
   fields: ProfileField[]
@@ -40,6 +43,7 @@ export interface DemoContextValue {
   setHrStep: (step: HrStepId) => void
   logout: () => void
   seedDemoForHr: () => void
+  seedDemoForCandidateC4: () => void
 }
 
 export const DemoContext = createContext<DemoContextValue | null>(null)

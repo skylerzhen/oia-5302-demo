@@ -13,15 +13,13 @@ export interface InterviewEvaluationReport {
   dimensions: EvaluationDimension[]
 }
 
-function candidateEvidence(turns: InterviewTurn[], language: 'en' | 'ar') {
-  return turns.find((turn) => turn.speaker === 'candidate' && turn.language === language)
-    ?? turns.find((turn) => turn.speaker === 'candidate')
-    ?? {
-      id: 'no-evidence',
-      speaker: 'candidate' as const,
-      language,
-      text: 'No candidate response was recorded.',
-    }
+function candidateEvidence(turns: InterviewTurn[]) {
+  return turns.find((turn) => turn.speaker === 'candidate') ?? {
+    id: 'no-evidence',
+    speaker: 'candidate' as const,
+    language: 'en' as const,
+    text: 'No candidate response was recorded.',
+  }
 }
 
 export function buildInterviewEvaluationReport(
@@ -29,8 +27,7 @@ export function buildInterviewEvaluationReport(
   match: CandidateMatch,
   assessmentScore: number,
 ): InterviewEvaluationReport {
-  const englishEvidence = candidateEvidence(turns, 'en')
-  const arabicEvidence = candidateEvidence(turns, 'ar')
+  const englishEvidence = candidateEvidence(turns)
   const evidenceAlignedScore = Math.min(100, Math.round((match.totalScore + assessmentScore) / 2))
 
   return {
@@ -46,11 +43,11 @@ export function buildInterviewEvaluationReport(
         evidence: englishEvidence,
       },
       {
-        label: 'Bilingual interview communication',
-        score: arabicEvidence.id === 'no-evidence' ? 0 : 85,
+        label: 'Stakeholder communication',
+        score: englishEvidence.id === 'no-evidence' ? 0 : 85,
         maxScore: 100,
-        rationale: 'The Arabic response is retained as a separate, reviewable transcript citation.',
-        evidence: arabicEvidence,
+        rationale: 'The interview response is retained as a reviewable transcript citation.',
+        evidence: englishEvidence,
       },
       {
         label: 'Assessment and role fit',

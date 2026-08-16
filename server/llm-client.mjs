@@ -18,9 +18,9 @@ const PROVIDERS = {
 function resolveProviderName() {
   const configured = process.env.LLM_PROVIDER?.trim().toLowerCase()
   if (configured && PROVIDERS[configured]) return configured
-  if (process.env.DEEPSEEK_API_KEY?.trim()) return 'deepseek'
   if (process.env.OPENAI_API_KEY?.trim()) return 'openai'
-  return 'deepseek'
+  if (process.env.DEEPSEEK_API_KEY?.trim()) return 'deepseek'
+  return 'openai'
 }
 
 export function getLlmConfig() {
@@ -40,7 +40,7 @@ export function getLlmConfig() {
   }
 }
 
-async function chatCompletion({ system, user, model, temperature, json = false }) {
+async function chatCompletion({ system, user, model, temperature, json = false, maxTokens }) {
   const config = getLlmConfig()
   if (!config.apiKey) {
     throw new Error(`${config.label} API key is not configured`)
@@ -53,6 +53,10 @@ async function chatCompletion({ system, user, model, temperature, json = false }
       { role: 'system', content: system },
       { role: 'user', content: user },
     ],
+  }
+
+  if (typeof maxTokens === 'number') {
+    body.max_tokens = maxTokens
   }
 
   if (json) {
@@ -90,13 +94,14 @@ export async function chatJson({ system, user, model, temperature = 0.2 }) {
   return JSON.parse(content)
 }
 
-export async function chatText({ system, user, model, temperature = 0.4 }) {
+export async function chatText({ system, user, model, temperature = 0.4, maxTokens }) {
   const content = await chatCompletion({
     system,
     user,
     model: model ?? getLlmConfig().fastModel,
     temperature,
     json: false,
+    maxTokens,
   })
   return content.trim()
 }

@@ -1,4 +1,3 @@
-export type UiLocale = 'en' | 'ar'
 export type UserRole = 'candidate' | 'hr'
 
 export type CandidateStepId = 'C1' | 'C2' | 'C3' | 'C4' | 'C5' | 'C6'
@@ -12,7 +11,6 @@ export type DecisionType = 'shortlist' | 'disqualify' | 'hire_recommendation'
 export interface ProfileField {
   key: string
   label: string
-  labelAr: string
   value: string
   status: FieldStatus
   evidence: string
@@ -22,14 +20,12 @@ export interface ProfileField {
 export interface CandidateProfile {
   id: string
   name: string
-  nameAr: string
   email: string
   nationality: string
   yearsExperience: number
   education: string
   skills: string[]
   cvText: string
-  cvTextAr?: string
   cvFile?: string
   fields: ProfileField[]
 }
@@ -57,7 +53,6 @@ export interface CandidateMatch {
 export interface McqQuestion {
   id: string
   prompt: string
-  promptAr: string
   options: string[]
   correctIndex: number
 }
@@ -67,7 +62,7 @@ export type Viseme = 'rest' | 'A' | 'E' | 'O' | 'M' | 'F'
 export interface InterviewTurn {
   id: string
   speaker: 'avatar' | 'candidate'
-  language: 'en' | 'ar'
+  language: 'en'
   text: string
   expression?: 'neutral' | 'supportive' | 'curious' | 'gesture'
 }
@@ -78,6 +73,19 @@ export interface AuditEntry {
   actor: string
   action: string
   detail: string
+  step: string
+}
+
+export type IntegrationSystem = 'jadarah' | 'oracle-ebs'
+
+export interface IntegrationSyncEvent {
+  id: string
+  system: IntegrationSystem
+  systemLabel: string
+  endpoint: string
+  operation: string
+  refId: string
+  timestamp: string
   step: string
 }
 

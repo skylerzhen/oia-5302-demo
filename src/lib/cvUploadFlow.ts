@@ -1,4 +1,5 @@
-import { resolveSampleProfileId, type CvParseFieldResult } from '../data/cvParseProfiles'
+import { resolveSampleProfileId, getCvParseProfile, type CvParseFieldResult } from '../data/cvParseProfiles'
+import { cvSourceTextForSample } from '../data/cvSourceText'
 import { localAi, type CvParseResult } from './localAi'
 
 export type CvUploadStage = 'idle' | 'reading' | 'uploading' | 'parsing' | 'mapping' | 'done' | 'error'
@@ -14,7 +15,7 @@ export interface CvUploadInput {
   filePath?: string
   file?: File
   fileName: string
-  isArabicScan?: boolean
+  isScannedPdf?: boolean
 }
 
 export interface CvUploadResult {
@@ -24,7 +25,7 @@ export interface CvUploadResult {
   fileType: string
   mode: CvParseResult['mode']
   fields: CvParseFieldResult[]
-  isArabicScan: boolean
+  isScannedPdf: boolean
 }
 
 function wait(ms: number) {
@@ -51,8 +52,6 @@ async function readControlledSample(filePath: string, onProgress: (p: CvUploadPr
       fileType: response.headers.get('content-type') ?? 'application/octet-stream',
     }
   } catch {
-    // Surge or older builds may not yet publish issue-5302-inputs; keep the upload
-    // pipeline visible and continue with the controlled parse profile.
     await wait(650)
     onProgress({
       stage: 'reading',
@@ -86,9 +85,32 @@ async function parseWithAdapter(input: {
   fileName: string
   fileSize: number
   fileType: string
-  isArabicScan: boolean
+  isScannedPdf: boolean
+  documentText?: string
 }): Promise<CvParseResult> {
-  return localAi.parseCv(input)
+  const profile = getCvParseProfile(input.sampleId)
+  const documentText = input.documentText ?? cvSourceTextForSample(input.sampleId)
+  const apiBase = import.meta.env.VITE_LLM_API_URL?.trim()
+
+  if (!apiBase && profile) {
+    return { mode: 'adapter-fallback', fields: profile.fields }
+  }
+
+  try {
+    return await localAi.parseCv({
+      sampleId: input.sampleId,
+      fileName: input.fileName,
+      fileSize: input.fileSize,
+      fileType: input.fileType,
+      isScannedPdf: input.isScannedPdf,
+      documentText,
+    })
+  } catch (error) {
+    if (profile) {
+      return { mode: 'adapter-fallback', fields: profile.fields }
+    }
+    throw error
+  }
 }
 
 export async function runCvUploadFlow(
@@ -96,7 +118,7 @@ export async function runCvUploadFlow(
   onProgress: (progress: CvUploadProgress) => void,
 ): Promise<CvUploadResult> {
   const sampleId = input.sampleId ?? resolveSampleProfileId(input.fileName) ?? 'pdf-en'
-  const isArabicScan = input.isArabicScan ?? sampleId === 'pdf-ar-scan'
+  const isScannedPdf = input.isScannedPdf ?? sampleId === 'pdf-scan'
 
   try {
     onProgress({ stage: 'reading', progress: 4, message: 'Preparing upload…' })
@@ -114,7 +136,7 @@ export async function runCvUploadFlow(
     onProgress({
       stage: 'parsing',
       progress: 72,
-      message: isArabicScan ? 'Running OCR on scanned Arabic PDF…' : 'Extracting fields from document…',
+      message: isScannedPdf ? 'Running OCR on scanned PDF…' : 'Extracting fields from document…',
     })
 
     const parsed = await parseWithAdapter({
@@ -122,10 +144,11 @@ export async function runCvUploadFlow(
       fileName: input.fileName,
       fileSize: loaded.fileSize,
       fileType: loaded.fileType,
-      isArabicScan,
+      isScannedPdf,
+      documentText: cvSourceTextForSample(sampleId),
     })
 
-    await wait(isArabicScan ? 900 : 650)
+    await wait(isScannedPdf ? 900 : 650)
 
     onProgress({ stage: 'mapping', progress: 90, message: 'Mapping extracted fields to profile…' })
     await wait(350)
@@ -144,7 +167,7 @@ export async function runCvUploadFlow(
       fileType: loaded.fileType,
       mode: parsed.mode,
       fields,
-      isArabicScan,
+      isScannedPdf,
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Upload failed'
