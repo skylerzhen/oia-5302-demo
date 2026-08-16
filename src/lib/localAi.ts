@@ -1,4 +1,19 @@
-export type LocalAiMode = 'model' | 'adapter-fallback'
+export type LocalAiMode = 'model' | 'adapter-fallback' | 'browser'
+
+export interface VisemeMark {
+  timeMs: number
+  viseme: 'rest' | 'A' | 'E' | 'O' | 'M' | 'F'
+}
+
+export interface TtsResult {
+  mode: LocalAiMode
+  text: string
+  audioAvailable: boolean
+  useBrowserTts?: boolean
+  audioBase64?: string
+  mimeType?: string
+  visemeMarks?: VisemeMark[]
+}
 
 export interface CvParseResult {
   mode: LocalAiMode
@@ -51,6 +66,12 @@ export interface LocalAiStatus {
     llm: boolean
     asr: boolean
     tts: boolean
+  }
+  speech?: {
+    tts: boolean
+    asr: boolean
+    ttsProvider?: string
+    asrProvider?: string
   }
 }
 
@@ -110,8 +131,8 @@ export const localAi = {
     matchScore: number
     jobTitle?: string
   }) => post<AssessmentResult>('/api/local-ai/llm/generate-assessment', payload),
-  transcribe: (audioReference: string) =>
-    post<{ mode: LocalAiMode; transcript: string }>('/api/local-ai/asr/transcribe', { audioReference }),
-  synthesize: (text: string, language: 'en' | 'ar') =>
-    post<{ mode: LocalAiMode; text: string; audioAvailable: boolean }>('/api/local-ai/tts/synthesize', { text, language }),
+  transcribe: (payload: { transcript?: string; text?: string; language?: 'en' | 'ar' }) =>
+    post<{ mode: LocalAiMode; transcript: string }>('/api/local-ai/asr/transcribe', payload),
+  synthesize: (payload: { text: string; language: 'en' | 'ar' }) =>
+    post<TtsResult>('/api/local-ai/tts/synthesize', payload),
 }

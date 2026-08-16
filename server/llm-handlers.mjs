@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { resolveCvSourceText } from './cv-sources.mjs'
 import { chatJson, chatText, getLlmConfig } from './llm-client.mjs'
+import { handleSynthesize, handleTranscribe, speechAvailability } from './speech-handlers.mjs'
 
 function loadJobDescription() {
   const jdPath = resolve(process.cwd(), 'data/issue-5302-inputs/Senior-Financial-Analyst-JD.md')
@@ -30,6 +31,7 @@ function normalizeCvFields(rawFields) {
 
 export async function handleStatus() {
   const { available, provider, label } = getLlmConfig()
+  const speech = speechAvailability()
   return {
     mode: available ? 'model' : 'adapter-fallback',
     provider,
@@ -37,11 +39,14 @@ export async function handleStatus() {
     services: {
       ocr: available,
       llm: available,
-      asr: false,
-      tts: false,
+      asr: speech.asr,
+      tts: speech.tts,
     },
+    speech,
   }
 }
+
+export { handleSynthesize, handleTranscribe }
 
 export async function handleParseCv(body) {
   const sourceText = resolveCvSourceText(body)

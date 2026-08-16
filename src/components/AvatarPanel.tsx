@@ -9,15 +9,16 @@ interface AvatarPanelProps {
   language: 'en' | 'ar'
   caption: string
   expression?: 'neutral' | 'supportive' | 'curious' | 'gesture'
+  viseme?: Viseme
 }
 
-export function AvatarPanel({ speaking, language, caption, expression = 'neutral' }: AvatarPanelProps) {
+export function AvatarPanel({ speaking, language, caption, expression = 'neutral', viseme: drivenViseme }: AvatarPanelProps) {
   const visemes = useMemo(() => textToVisemes(caption, language), [caption, language])
   const [visemeIndex, setVisemeIndex] = useState(0)
   const [hasVroidVrm, setHasVroidVrm] = useState(false)
 
   useEffect(() => {
-    if (!speaking) {
+    if (!speaking || drivenViseme) {
       setVisemeIndex(0)
       return
     }
@@ -26,7 +27,7 @@ export function AvatarPanel({ speaking, language, caption, expression = 'neutral
       setVisemeIndex((current) => (current + 1) % visemes.length)
     }, 95)
     return () => window.clearInterval(timer)
-  }, [speaking, visemes.length])
+  }, [drivenViseme, speaking, visemes.length])
 
   useEffect(() => {
     let active = true
@@ -36,7 +37,9 @@ export function AvatarPanel({ speaking, language, caption, expression = 'neutral
     return () => { active = false }
   }, [])
 
-  const viseme: Viseme = speaking ? visemes[visemeIndex] ?? 'rest' : 'rest'
+  const viseme: Viseme = speaking
+    ? drivenViseme ?? visemes[visemeIndex] ?? 'rest'
+    : 'rest'
 
   return (
     <div className="avatar-panel">
@@ -64,7 +67,7 @@ export function AvatarPanel({ speaking, language, caption, expression = 'neutral
               </g>
               <path d="M111 186c31 20 67 20 98 0" stroke="#b45309" strokeWidth="3" fill="none" opacity=".45" />
             </svg>
-            <div className="avatar-tech-note">{expression} · 2D phoneme → viseme</div>
+            <div className="avatar-tech-note">{expression} · TTS viseme → lip-sync</div>
           </div>
         )}
       </div>

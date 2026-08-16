@@ -333,6 +333,11 @@ button.source-file-link {
 
 .submission-review {
   margin-top: 1rem;
+  scroll-margin-top: 1rem;
+}
+
+.cv-review-panel {
+  scroll-margin-top: 1rem;
 }
 
 .submission-review dl {
@@ -624,6 +629,51 @@ textarea {
 .avatar-mouth.viseme-O { transform: scaleY(2.2) scaleX(0.7); }
 .avatar-mouth.viseme-M { transform: scaleY(0.35) scaleX(1.1); }
 .avatar-mouth.viseme-F { transform: translateY(4px) scaleY(0.6) scaleX(1.25); }
+
+.voice-answer-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.voice-mic-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.55rem 0.85rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: #f0fdf4;
+  color: #166534;
+  font-weight: 600;
+}
+
+.voice-mic-btn.listening {
+  background: #fef2f2;
+  color: #b91c1c;
+  animation: voicePulse 1.2s ease-in-out infinite;
+}
+
+.voice-mic-btn:disabled {
+  opacity: 0.55;
+}
+
+.voice-transcript-preview {
+  padding: 0.75rem 0.9rem;
+  border-radius: 0.65rem;
+  background: #f8fafc;
+  border: 1px solid var(--border);
+}
+
+.voice-transcript-preview p {
+  margin: 0.35rem 0 0;
+}
+
+@keyframes voicePulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.35); }
+  50% { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
+}
 
 .avatar-stage.expression-supportive .avatar-illustration {
   filter: brightness(1.08) saturate(0.9);

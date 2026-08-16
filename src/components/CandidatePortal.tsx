@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { CheckCircle2, Play, Upload } from 'lucide-react'
 import { useDemo } from '../context/DemoContext'
 import { AvatarPanel } from './AvatarPanel'
+import { VoiceAnswerInput } from './VoiceAnswerInput'
 import { EvidenceModal } from './EvidenceModal'
 import { SourceDocumentModal } from './SourceDocumentModal'
 import { Layout } from './Layout'
@@ -14,6 +15,7 @@ import { FINANCE_JOB } from '../data/job'
 import { MCQ_QUESTIONS } from '../data/questions'
 import { CANDIDATE_STEPS } from '../lib/demo'
 import { localAi } from '../lib/localAi'
+import { preloadSpeechVoices, speakInterviewLine } from '../lib/voiceSpeak'
 import { controlledViewUrl } from '../lib/controlledDocUrl'
 import { applyParsedFields, runCvUploadFlow, type CvUploadProgress } from '../lib/cvUploadFlow'
 import {
@@ -21,7 +23,7 @@ import {
   getInterviewUiPhase,
   getMatchById,
 } from '../lib/matching'
-import type { CandidateStepId, FieldStatus, InterviewTurn } from '../types'
+import type { CandidateStepId, FieldStatus, InterviewTurn, Viseme } from '../types'
 
 function statusLabel(status: FieldStatus): string {
   if (status === 'parsed') return 'Parsed'
@@ -52,16 +54,29 @@ export function CandidatePortal() {
   const [avatarCaption, setAvatarCaption] = useState('')
   const [avatarExpression, setAvatarExpression] = useState<'neutral' | 'supportive' | 'curious' | 'gesture'>('neutral')
   const [supportivePrompt, setSupportivePrompt] = useState('')
-  const [localAiMode, setLocalAiMode] = useState<'model' | 'adapter-fallback' | 'unavailable'>('unavailable')
+  const [avatarViseme, setAvatarViseme] = useState<Viseme>('rest')
+  const [speechStatus, setSpeechStatus] = useState({ tts: 'browser', asr: 'browser' })
+  const [localAiMode, setLocalAiMode] = useState<'model' | 'adapter-fallback' | 'browser' | 'unavailable'>('unavailable')
   const [llmBusy, setLlmBusy] = useState(false)
   const [llmError, setLlmError] = useState('')
   const [scanImported, setScanImported] = useState(false)
   const [reviewReady, setReviewReady] = useState(false)
   const [uploadBusy, setUploadBusy] = useState(false)
+  const [uploadError, setUploadError] = useState('')
   const [uploadProgress, setUploadProgress] = useState<CvUploadProgress>({ stage: 'idle', progress: 0, message: '' })
   const [evidenceModal, setEvidenceModal] = useState<{ title: string; evidence: string; source?: string } | null>(null)
   const [sourceDoc, setSourceDoc] = useState<{ title: string; url: string } | null>(null)
   const stopAvatarRef = useRef<(() => void) | null>(null)
+  const speechAbortRef = useRef<AbortController | null>(null)
+  const confirmFieldsRef = useRef<HTMLDivElement | null>(null)
+  const submissionReviewRef = useRef<HTMLElement | null>(null)
+
+  function scrollToElement(element: HTMLElement | null) {
+    if (!element) return
+    requestAnimationFrame(() => {
+      element.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+  }
 
   const match = getMatchById(PRIMARY_CANDIDATE_ID)
   const interviewPhase = getInterviewUiPhase(interviewTurns, pipeline.interviewCompleted)
@@ -71,10 +86,22 @@ export function CandidatePortal() {
   }, [examStartedAt, examSubmitted, step])
 
   useEffect(() => {
+    preloadSpeechVoices()
     localAi.status()
-      .then((status) => setLocalAiMode(status.mode))
+      .then((status) => {
+        setLocalAiMode(status.mode)
+        setSpeechStatus({
+          tts: status.speech?.ttsProvider ?? (status.services.tts ? 'server' : 'browser'),
+          asr: status.speech?.asrProvider ?? 'browser',
+        })
+      })
       .catch(() => setLocalAiMode('unavailable'))
   }, [])
+
+  useEffect(() => {
+    if (!reviewReady) return
+    scrollToElement(submissionReviewRef.current)
+  }, [reviewReady])
 
   async function processCvUpload(input: {
     sampleId: string
@@ -85,6 +112,7 @@ export function CandidatePortal() {
   }) {
     if (uploadBusy || uploadedSamples.includes(input.sampleId)) return
     setUploadBusy(true)
+    setUploadError('')
     setReviewReady(false)
     setUploadProgress({ stage: 'reading', progress: 0, message: 'Starting upload…' })
     try {
@@ -107,13 +135,20 @@ export function CandidatePortal() {
       } else {
         log('Candidate', 'CV uploaded', `${result.fileName}; fields mapped from controlled input`, 'C1')
       }
+      scrollToElement(confirmFieldsRef.current)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Upload failed'
+      setUploadError(message)
+      setUploadProgress((current) => (
+        current.stage === 'error'
+          ? current
+          : { stage: 'error', progress: 0, message }
+      ))
       log('System', 'CV upload failed', message, 'C1')
     } finally {
       setUploadBusy(false)
       window.setTimeout(() => {
-        setUploadProgress((current) => (current.stage === 'done' || current.stage === 'error' ? { stage: 'idle', progress: 0, message: '' } : current))
+        setUploadProgress((current) => (current.stage === 'done' ? { stage: 'idle', progress: 0, message: '' } : current))
       }, 2800)
     }
   }
@@ -212,17 +247,33 @@ export function CandidatePortal() {
     setAvatarCaption(turn.text)
     setAvatarExpression(turn.expression ?? 'neutral')
     setAvatarSpeaking(true)
-    const duration = Math.max(1200, turn.text.length * (turn.language === 'ar' ? 88 : 82))
-    await new Promise<void>((resolve) => {
-      const finish = () => {
-        window.clearTimeout(timer)
+    setAvatarViseme('rest')
+
+    speechAbortRef.current?.abort()
+    const controller = new AbortController()
+    speechAbortRef.current = controller
+    stopAvatarRef.current = () => controller.abort()
+
+    try {
+      const mode = await speakInterviewLine({
+        text: turn.text,
+        language: turn.language,
+        onViseme: setAvatarViseme,
+        signal: controller.signal,
+      })
+      log('System', 'Avatar TTS', `${turn.language}; mode: ${mode}`, 'C4')
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return
+      const message = error instanceof Error ? error.message : 'TTS failed'
+      log('System', 'Avatar TTS failed', message, 'C4')
+    } finally {
+      if (speechAbortRef.current === controller) {
+        speechAbortRef.current = null
         stopAvatarRef.current = null
-        setAvatarSpeaking(false)
-        resolve()
       }
-      const timer = window.setTimeout(finish, duration)
-      stopAvatarRef.current = finish
-    })
+      setAvatarSpeaking(false)
+      setAvatarViseme('rest')
+    }
   }
 
   function interruptAvatar() {
@@ -230,6 +281,7 @@ export function CandidatePortal() {
     stopAvatarRef.current?.()
     setAvatarCaption('I have paused. Please continue when you are ready.')
     setAvatarExpression('supportive')
+    setAvatarViseme('rest')
     log('Candidate', 'Avatar interrupted', 'Candidate interrupted the avatar; interview safely paused', 'C4')
   }
 
@@ -267,8 +319,8 @@ export function CandidatePortal() {
                 <div>
                   <h3>Upload CV</h3>
                   <p className="muted tiny">Select a controlled sample or a local file. The app reads the document, uploads it to the local parser, then maps extracted fields.</p>
-                  {(uploadBusy || uploadProgress.stage === 'done' || uploadProgress.stage === 'error') && (
-                    <div className={`upload-progress ${uploadProgress.stage}`}>
+                  {(uploadBusy || uploadProgress.stage === 'done' || uploadProgress.stage === 'error' || uploadError) && (
+                    <div className={`upload-progress ${uploadProgress.stage === 'idle' && uploadError ? 'error' : uploadProgress.stage}`}>
                       <div className="upload-progress-head">
                         <strong>
                           {uploadProgress.stage === 'reading' && 'Reading document'}
@@ -276,12 +328,12 @@ export function CandidatePortal() {
                           {uploadProgress.stage === 'parsing' && 'Parsing'}
                           {uploadProgress.stage === 'mapping' && 'Mapping fields'}
                           {uploadProgress.stage === 'done' && 'Complete'}
-                          {uploadProgress.stage === 'error' && 'Upload failed'}
+                          {(uploadProgress.stage === 'error' || uploadError) && 'Upload failed'}
                         </strong>
                         <span>{uploadProgress.progress}%</span>
                       </div>
                       <div className="upload-progress-bar"><span style={{ width: `${uploadProgress.progress}%` }} /></div>
-                      <p className="muted tiny">{uploadProgress.message}</p>
+                      <p className="danger-text">{uploadError || uploadProgress.message}</p>
                     </div>
                   )}
                   <ul className="upload-list">
@@ -325,7 +377,7 @@ export function CandidatePortal() {
                     />
                   </label>
                 </div>
-                <div>
+                <div ref={confirmFieldsRef} className="cv-review-panel">
                   <h3>Confirm extracted fields</h3>
                   {scanImported && (
                     <div className="parse-note">
@@ -369,7 +421,7 @@ export function CandidatePortal() {
                 </div>
               </div>
               {reviewReady && (
-                <section className="card submission-review">
+                <section ref={submissionReviewRef} className="card submission-review">
                   <header className="section-head">
                     <div>
                       <h2>Review & submit</h2>
@@ -519,7 +571,7 @@ export function CandidatePortal() {
             <section className="stack">
               <header className="section-head">
                 <h1>C4 · AI avatar interview</h1>
-                <p>Candidate-only session · HR reviews recording separately · LLM: <strong>{localAiMode}</strong></p>
+                <p>Candidate-only session · HR reviews recording separately · LLM: <strong>{localAiMode}</strong> · TTS: <strong>{speechStatus.tts}</strong> · ASR: <strong>{speechStatus.asr}</strong></p>
               </header>
               <div className="interview-steps card">
                 <span className={interviewPhase !== 'idle' ? 'done' : 'active'}>1. English Q&amp;A</span>
@@ -527,7 +579,13 @@ export function CandidatePortal() {
                 <span className={pipeline.interviewCompleted ? 'done' : ''}>3. Submit</span>
               </div>
               <div className="grid-2">
-                <AvatarPanel speaking={avatarSpeaking} language={avatarLanguage} expression={avatarExpression} caption={avatarCaption || 'Start when ready'} />
+                <AvatarPanel
+                  speaking={avatarSpeaking}
+                  language={avatarLanguage}
+                  expression={avatarExpression}
+                  caption={avatarCaption || 'Start when ready'}
+                  viseme={avatarSpeaking ? avatarViseme : undefined}
+                />
                 <div className="card stack">
                   {!interviewStarted ? (
                     <button type="button" className="primary" disabled={llmBusy} onClick={() => {
@@ -555,23 +613,31 @@ export function CandidatePortal() {
 
                       {interviewPhase === 'english_answer' && (
                         <div className="stack">
-                          <p className="muted tiny">Step 1/3 · Answer in English, then continue to the Arabic segment.</p>
-                          <textarea value={candidateAnswerEn} onChange={(e) => setCandidateAnswerEn(e.target.value)} placeholder="Your answer (English)..." />
+                          <p className="muted tiny">Step 1/3 · Answer in English (microphone or typing), then continue to the Arabic segment.</p>
+                          <VoiceAnswerInput
+                            language="en"
+                            value={candidateAnswerEn}
+                            onChange={setCandidateAnswerEn}
+                            disabled={avatarSpeaking || llmBusy}
+                            placeholder="Your answer (English)..."
+                            submitLabel={llmBusy ? 'Generating follow-up…' : 'Send English answer'}
+                            submitDisabled={llmBusy}
+                            onSubmit={() => {
+                              const ans = candidateAnswerEn.trim()
+                              void runLlmInterviewAction(async () => {
+                                const candidateTurn = { id: nextTurnId('c-en'), speaker: 'candidate' as const, language: 'en' as const, text: ans }
+                                const updatedTurns = [...interviewTurns, candidateTurn]
+                                setInterviewTurns(updatedTurns)
+                                setCandidateAnswerEn('')
+                                const followUp = await generateAvatarFollowUp(ans, 'en', updatedTurns)
+                                await speakAvatar({ id: nextTurnId('fu'), speaker: 'avatar', language: 'en', text: followUp, expression: 'curious' })
+                              })
+                            }}
+                          />
                           <button type="button" onClick={requestSupportivePause} disabled={avatarSpeaking}>
                             I need a moment (3-second supportive response)
                           </button>
                           {supportivePrompt && <p className="muted tiny">{supportivePrompt}</p>}
-                          <button type="button" className="primary" disabled={!candidateAnswerEn.trim() || avatarSpeaking || llmBusy} onClick={() => {
-                            const ans = candidateAnswerEn.trim()
-                            void runLlmInterviewAction(async () => {
-                              const candidateTurn = { id: nextTurnId('c-en'), speaker: 'candidate' as const, language: 'en' as const, text: ans }
-                              const updatedTurns = [...interviewTurns, candidateTurn]
-                              setInterviewTurns(updatedTurns)
-                              setCandidateAnswerEn('')
-                              const followUp = await generateAvatarFollowUp(ans, 'en', updatedTurns)
-                              await speakAvatar({ id: nextTurnId('fu'), speaker: 'avatar', language: 'en', text: followUp, expression: 'curious' })
-                            })
-                          }}>{llmBusy ? 'Generating follow-up…' : 'Send English answer'}</button>
                         </div>
                       )}
 
@@ -590,18 +656,26 @@ export function CandidatePortal() {
                       {interviewPhase === 'arabic_answer' && (
                         <div className="stack">
                           <p className="muted tiny">Step 2/3 · Answer in Arabic to finish the interview.</p>
-                          <textarea dir="rtl" value={candidateAnswerAr} onChange={(e) => setCandidateAnswerAr(e.target.value)} placeholder="إجابتكم بالعربية..." />
-                          <button type="button" className="primary" disabled={!candidateAnswerAr.trim() || avatarSpeaking || llmBusy} onClick={() => {
-                            const ans = candidateAnswerAr.trim()
-                            void runLlmInterviewAction(async () => {
-                              const candidateTurn = { id: nextTurnId('c-ar'), speaker: 'candidate' as const, language: 'ar' as const, text: ans }
-                              const updatedTurns = [...interviewTurns, candidateTurn]
-                              setInterviewTurns(updatedTurns)
-                              setCandidateAnswerAr('')
-                              const followUp = await generateAvatarFollowUp(ans, 'ar', updatedTurns)
-                              await speakAvatar({ id: nextTurnId('fu-ar'), speaker: 'avatar', language: 'ar', text: followUp, expression: 'supportive' })
-                            })
-                          }}>{llmBusy ? 'Generating follow-up…' : 'Send Arabic answer'}</button>
+                          <VoiceAnswerInput
+                            language="ar"
+                            value={candidateAnswerAr}
+                            onChange={setCandidateAnswerAr}
+                            disabled={avatarSpeaking || llmBusy}
+                            placeholder="إجابتكم بالعربية..."
+                            submitLabel={llmBusy ? 'Generating follow-up…' : 'Send Arabic answer'}
+                            submitDisabled={llmBusy}
+                            onSubmit={() => {
+                              const ans = candidateAnswerAr.trim()
+                              void runLlmInterviewAction(async () => {
+                                const candidateTurn = { id: nextTurnId('c-ar'), speaker: 'candidate' as const, language: 'ar' as const, text: ans }
+                                const updatedTurns = [...interviewTurns, candidateTurn]
+                                setInterviewTurns(updatedTurns)
+                                setCandidateAnswerAr('')
+                                const followUp = await generateAvatarFollowUp(ans, 'ar', updatedTurns)
+                                await speakAvatar({ id: nextTurnId('fu-ar'), speaker: 'avatar', language: 'ar', text: followUp, expression: 'supportive' })
+                              })
+                            }}
+                          />
                         </div>
                       )}
 

@@ -6,6 +6,8 @@ import {
   handleGenerateQuestion,
   handleParseCv,
   handleStatus,
+  handleSynthesize,
+  handleTranscribe,
 } from './llm-handlers.mjs'
 
 loadEnv()
@@ -35,6 +37,8 @@ const routes = {
   'POST /api/local-ai/llm/generate-question': async (req, res) => sendJson(res, 200, await handleGenerateQuestion(await readJson(req))),
   'POST /api/local-ai/llm/follow-up': async (req, res) => sendJson(res, 200, await handleFollowUp(await readJson(req))),
   'POST /api/local-ai/llm/generate-assessment': async (req, res) => sendJson(res, 200, await handleGenerateAssessment(await readJson(req))),
+  'POST /api/local-ai/tts/synthesize': async (req, res) => sendJson(res, 200, await handleSynthesize(await readJson(req))),
+  'POST /api/local-ai/asr/transcribe': async (req, res) => sendJson(res, 200, await handleTranscribe(await readJson(req))),
 }
 
 createServer(async (req, res) => {

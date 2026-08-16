@@ -42,7 +42,7 @@ export function Layout({
   const roleLabel = role === 'candidate' ? 'Candidate portal (Jadarah token)' : 'HR portal (OIA SSO + MFA)'
 
   return (
-    <div className={`app-shell ${uiLocale === 'ar' ? 'rtl' : ''}`} dir={uiLocale === 'ar' ? 'rtl' : 'ltr'}>
+    <div className="app-shell" dir="ltr">
       <header className="topbar">
         <div className="brand">
           <Shield size={22} />

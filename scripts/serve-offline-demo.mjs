@@ -147,7 +147,7 @@ createServer(async (request, response) => {
   response.writeHead(200, {
     'Content-Type': MIME[path.extname(file)] ?? 'application/octet-stream',
     'Cache-Control': 'no-store',
-    'Content-Security-Policy': "default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'",
+    'Content-Security-Policy': "default-src 'self'; connect-src 'self'; img-src 'self' data:; media-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'",
   })
   createReadStream(file).pipe(response)
 }).listen(PORT, '127.0.0.1', () => {
