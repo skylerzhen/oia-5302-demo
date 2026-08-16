@@ -1,4 +1,5 @@
 import { buildSsml, synthesizeAzureWithVisemes } from './azure-tts.mjs'
+import { transcribeAzurePcm16 } from './azure-asr.mjs'
 
 function azureConfigured() {
   return Boolean(process.env.AZURE_SPEECH_KEY?.trim() && process.env.AZURE_SPEECH_REGION?.trim())
@@ -101,11 +102,28 @@ export async function handleSynthesize(body) {
 }
 
 export async function handleTranscribe(body) {
+  const language = body.language === 'ar' ? 'ar' : 'en'
   const transcript = String(body.transcript ?? body.text ?? '').trim()
-  if (transcript) {
-    return { mode: 'browser', transcript }
+  const pcmBase64 = String(body.pcmBase64 ?? body.audioPcmBase64 ?? '').trim()
+  const sampleRate = Number(body.sampleRate ?? 16000) || 16000
+
+  if (pcmBase64 && azureConfigured()) {
+    const pcmBuffer = Buffer.from(pcmBase64, 'base64')
+    const text = await transcribeAzurePcm16({
+      key: process.env.AZURE_SPEECH_KEY.trim(),
+      region: process.env.AZURE_SPEECH_REGION.trim(),
+      language,
+      pcmBuffer,
+      sampleRate,
+    })
+    return { mode: 'model', transcript: text, asrProvider: 'azure' }
   }
-  throw new Error('Browser speech recognition should send transcript text for demo ASR fallback.')
+
+  if (transcript) {
+    return { mode: 'browser', transcript, asrProvider: 'browser' }
+  }
+
+  throw new Error('Send pcmBase64 for Azure ASR or transcript for browser ASR fallback.')
 }
 
 export function speechAvailability() {
@@ -114,7 +132,7 @@ export function speechAvailability() {
     tts: true,
     asr: true,
     ttsProvider: azure ? 'azure' : 'browser',
-    asrProvider: 'browser',
+    asrProvider: azure ? 'azure' : 'browser',
     visemeSource: azure ? 'azure-sdk' : 'estimated',
   }
 }

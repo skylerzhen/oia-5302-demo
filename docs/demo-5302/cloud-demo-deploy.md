@@ -39,6 +39,23 @@ LLM_MODEL_FAST=deepseek-chat
 LLM_API_PORT=10000
 ```
 
+**Azure Speech（C4 TTS 口型 + ASR，推荐）：**
+
+```
+AZURE_SPEECH_KEY=<Speech 资源 Key 1>
+AZURE_SPEECH_REGION=uaenorth
+AZURE_SPEECH_VOICE_EN=en-US-JennyNeural
+AZURE_SPEECH_VOICE_AR=ar-OM-AyshaNeural
+```
+
+验证 Azure 已生效：
+
+```bash
+curl -s https://<你的-render-url>/api/local-ai/status | jq .speech
+```
+
+应看到 `"ttsProvider":"azure"`, `"asrProvider":"azure"`, `"visemeSource":"azure-sdk"`。
+
 > Render 会注入 `PORT`；若需兼容可把 `server/index.mjs` 的端口改为 `process.env.PORT ?? process.env.LLM_API_PORT ?? 8787`
 
 6. Deploy 完成后得到 URL，例如：`https://oia-5302-llm.onrender.com`
@@ -97,11 +114,74 @@ npm run dev                    # Vite proxy → localhost:8787
 
 ---
 
-## 五、后续：语音 + 口型
+## 五、Azure Speech 部署清单（TTS 口型 + ASR）
 
-同一云端 API 服务后续追加：
+### A. Azure Portal（一次性）
 
-- `POST /api/local-ai/tts/synthesize`（带 viseme）
-- `POST /api/local-ai/asr/transcribe`
+1. [Azure Portal](https://portal.azure.com) → **Create a resource** → **Speech**
+2. 区域选 **UAE North (`uaenorth`)** 或离阿曼最近的区域
+3. 定价层：**Free F0** 足够 demo（每月有限额）
+4. 创建后 → **Keys and Endpoint** → 复制 **Key 1** 和 **Region**
+
+### B. 本地 `llm.env`（开发验证）
+
+```bash
+# 追加到 llm.env（不要提交 git）
+AZURE_SPEECH_KEY=<Key 1>
+AZURE_SPEECH_REGION=uaenorth
+AZURE_SPEECH_VOICE_EN=en-US-JennyNeural
+AZURE_SPEECH_VOICE_AR=ar-OM-AyshaNeural
+```
+
+验证：
+
+```bash
+npm run dev:api          # 或 node server/index.mjs
+npm run verify:azure     # 应显示 ttsProvider: azure, visemeSource: azure-sdk
+```
+
+### C. Render 环境变量
+
+在 [Render Dashboard](https://dashboard.render.com) → **oia-5302-demo**（或 llm-api 服务）→ **Environment**：
+
+| Key | Value |
+|-----|--------|
+| `AZURE_SPEECH_KEY` | Key 1（Secret） |
+| `AZURE_SPEECH_REGION` | `uaenorth` |
+| `AZURE_SPEECH_VOICE_EN` | `en-US-JennyNeural` |
+| `AZURE_SPEECH_VOICE_AR` | `ar-OM-AyshaNeural` |
+
+保存后 **Manual Deploy** 或等自动 redeploy。
+
+验证：
+
+```bash
+npm run verify:azure:render
+# 或
+curl -s https://oia-5302-demo.onrender.com/api/local-ai/status | jq .speech
+```
+
+成功标志：`"ttsProvider":"azure"`, `"asrProvider":"azure"`, `"visemeSource":"azure-sdk"`
+
+### D. Surge 前端
+
+Azure 走 API，前端无需改 env（仍指向 Render）：
+
+```bash
+npm run deploy:surge:cloud -- https://oia-5302-demo.onrender.com
+```
+
+C4 页眉应显示：`TTS: azure · ASR: azure · Lip-sync: azure-sdk`
+
+---
+
+## 六、后续：语音 + 口型（已合并到第五节）
+
+同一云端 API 已支持（配置 `AZURE_SPEECH_*` 后自动启用）：
+
+- `POST /api/local-ai/tts/synthesize` — Azure TTS + **Speech SDK viseme 事件**（口型时间轴）
+- `POST /api/local-ai/asr/transcribe` — Azure ASR（`pcmBase64` 16 kHz mono）或 browser 回退
+
+C4 页眉显示 `TTS: azure · ASR: azure · Lip-sync: azure-sdk` 即配置成功。
 
 前端仍通过 `VITE_LLM_API_URL` 调用，UIS 无需改配置。

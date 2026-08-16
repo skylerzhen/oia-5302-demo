@@ -14,3 +14,11 @@ services:
         value: deepseek-chat
       - key: DEEPSEEK_API_KEY
         sync: false
+      - key: AZURE_SPEECH_KEY
+        sync: false
+      - key: AZURE_SPEECH_REGION
+        value: uaenorth
+      - key: AZURE_SPEECH_VOICE_EN
+        value: en-US-JennyNeural
+      - key: AZURE_SPEECH_VOICE_AR
+        value: ar-OM-AyshaNeural
