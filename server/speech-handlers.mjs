@@ -1,13 +1,7 @@
+import { buildSsml, synthesizeAzureWithVisemes } from './azure-tts.mjs'
+
 function azureConfigured() {
   return Boolean(process.env.AZURE_SPEECH_KEY?.trim() && process.env.AZURE_SPEECH_REGION?.trim())
-}
-
-function escapeXml(text) {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
 }
 
 function voiceFor(language) {
@@ -20,7 +14,7 @@ function estimateDurationMs(text, language) {
   return Math.max(1400, text.length * (language === 'ar' ? 88 : 78))
 }
 
-function buildVisemeMarks(text, language) {
+function buildEstimatedVisemeMarks(text, language) {
   const charToViseme = {
     a: 'A', e: 'E', i: 'E', o: 'O', u: 'O', m: 'M', b: 'M', p: 'M', f: 'F', v: 'F',
     ا: 'A', و: 'O', ي: 'E',
@@ -44,7 +38,7 @@ export async function handleSynthesize(body) {
   const language = body.language === 'ar' ? 'ar' : 'en'
   if (!text) throw new Error('Text is required for TTS')
 
-  const visemeMarks = buildVisemeMarks(text, language)
+  const estimatedMarks = buildEstimatedVisemeMarks(text, language)
 
   if (!azureConfigured()) {
     return {
@@ -52,38 +46,57 @@ export async function handleSynthesize(body) {
       text,
       audioAvailable: false,
       useBrowserTts: true,
-      visemeMarks,
+      visemeMarks: estimatedMarks,
+      visemeSource: 'estimated',
     }
   }
 
   const region = process.env.AZURE_SPEECH_REGION.trim()
   const key = process.env.AZURE_SPEECH_KEY.trim()
   const voice = voiceFor(language)
-  const ssml = `<speak version="1.0" xml:lang="${language === 'ar' ? 'ar-OM' : 'en-US'}"><voice name="${voice}">${escapeXml(text)}</voice></speak>`
+  const ssml = buildSsml(text, language, voice)
 
-  const response = await fetch(`https://${region}.tts.speech.microsoft.com/cognitiveservices/v1`, {
-    method: 'POST',
-    headers: {
-      'Ocp-Apim-Subscription-Key': key,
-      'Content-Type': 'application/ssml+xml',
-      'X-Microsoft-OutputFormat': 'audio-24khz-96kbitrate-mono-mp3',
-    },
-    body: ssml,
-  })
+  try {
+    const azure = await synthesizeAzureWithVisemes({ key, region, voice, ssml })
+    const marks = azure.visemeMarks.length > 0 ? azure.visemeMarks : estimatedMarks
 
-  if (!response.ok) {
-    const detail = await response.text()
-    throw new Error(`Azure TTS failed (${response.status}): ${detail}`)
-  }
+    return {
+      mode: 'model',
+      text,
+      audioAvailable: true,
+      audioBase64: azure.audioBuffer.toString('base64'),
+      mimeType: azure.mimeType,
+      visemeMarks: marks,
+      visemeSource: azure.visemeSource,
+    }
+  } catch (error) {
+    console.warn('[speech] Azure SDK viseme synthesis failed, falling back to REST TTS:', error)
 
-  const audioBuffer = Buffer.from(await response.arrayBuffer())
-  return {
-    mode: 'model',
-    text,
-    audioAvailable: true,
-    audioBase64: audioBuffer.toString('base64'),
-    mimeType: 'audio/mpeg',
-    visemeMarks,
+    const response = await fetch(`https://${region}.tts.speech.microsoft.com/cognitiveservices/v1`, {
+      method: 'POST',
+      headers: {
+        'Ocp-Apim-Subscription-Key': key,
+        'Content-Type': 'application/ssml+xml',
+        'X-Microsoft-OutputFormat': 'audio-24khz-96kbitrate-mono-mp3',
+      },
+      body: ssml,
+    })
+
+    if (!response.ok) {
+      const detail = await response.text()
+      throw new Error(`Azure TTS failed (${response.status}): ${detail}`)
+    }
+
+    const audioBuffer = Buffer.from(await response.arrayBuffer())
+    return {
+      mode: 'model',
+      text,
+      audioAvailable: true,
+      audioBase64: audioBuffer.toString('base64'),
+      mimeType: 'audio/mpeg',
+      visemeMarks: estimatedMarks,
+      visemeSource: 'estimated',
+    }
   }
 }
 
@@ -102,5 +115,6 @@ export function speechAvailability() {
     asr: true,
     ttsProvider: azure ? 'azure' : 'browser',
     asrProvider: 'browser',
+    visemeSource: azure ? 'azure-sdk' : 'estimated',
   }
 }

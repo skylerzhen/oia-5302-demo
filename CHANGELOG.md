@@ -27,7 +27,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Versioning foll
 - sessionStorage 自动跳过 Landing 进入 Candidate login
 
 ### Paused
-- 3D Avatar（VRoid / MakeHuman）— 等待 `.vrm` 资源
+- 3D Avatar VRoid lip-sync enabled when `public/avatar/oia-vroid-interviewer.vrm` present (demo uses AvatarSample_B)
 
 [Unreleased]: https://github.com/skylerzhen/oia-5302-demo/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/skylerzhen/oia-5302-demo/releases/tag/v0.1.0

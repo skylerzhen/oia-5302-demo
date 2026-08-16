@@ -22,7 +22,9 @@ import {
   buildImprovementTips,
   getInterviewUiPhase,
   getMatchById,
+  type InterviewUiPhase,
 } from '../lib/matching'
+import { scrollElementIntoContent, scrollPageToTop } from '../lib/scrollPageToTop'
 import type { CandidateStepId, FieldStatus, InterviewTurn, Viseme } from '../types'
 
 function statusLabel(status: FieldStatus): string {
@@ -55,7 +57,7 @@ export function CandidatePortal() {
   const [avatarExpression, setAvatarExpression] = useState<'neutral' | 'supportive' | 'curious' | 'gesture'>('neutral')
   const [supportivePrompt, setSupportivePrompt] = useState('')
   const [avatarViseme, setAvatarViseme] = useState<Viseme>('rest')
-  const [speechStatus, setSpeechStatus] = useState({ tts: 'browser', asr: 'browser' })
+  const [speechStatus, setSpeechStatus] = useState({ tts: 'browser', asr: 'browser', viseme: 'estimated' })
   const [localAiMode, setLocalAiMode] = useState<'model' | 'adapter-fallback' | 'browser' | 'unavailable'>('unavailable')
   const [llmBusy, setLlmBusy] = useState(false)
   const [llmError, setLlmError] = useState('')
@@ -70,12 +72,10 @@ export function CandidatePortal() {
   const speechAbortRef = useRef<AbortController | null>(null)
   const confirmFieldsRef = useRef<HTMLDivElement | null>(null)
   const submissionReviewRef = useRef<HTMLElement | null>(null)
+  const stepTopRef = useRef<HTMLDivElement | null>(null)
 
   function scrollToElement(element: HTMLElement | null) {
-    if (!element) return
-    requestAnimationFrame(() => {
-      element.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    })
+    scrollElementIntoContent(element)
   }
 
   const match = getMatchById(PRIMARY_CANDIDATE_ID)
@@ -86,6 +86,19 @@ export function CandidatePortal() {
   }, [examStartedAt, examSubmitted, step])
 
   useEffect(() => {
+    const raf = requestAnimationFrame(() => {
+      scrollPageToTop()
+      stepTopRef.current?.scrollIntoView({ block: 'start' })
+    })
+    return () => cancelAnimationFrame(raf)
+  }, [step])
+
+  useEffect(() => {
+    if (step !== 'C4' || pipeline.interviewCompleted) return
+    setInterviewStarted(interviewTurns.length > 0)
+  }, [step, pipeline.interviewCompleted, interviewTurns.length])
+
+  useEffect(() => {
     preloadSpeechVoices()
     localAi.status()
       .then((status) => {
@@ -93,6 +106,7 @@ export function CandidatePortal() {
         setSpeechStatus({
           tts: status.speech?.ttsProvider ?? (status.services.tts ? 'server' : 'browser'),
           asr: status.speech?.asrProvider ?? 'browser',
+          viseme: status.speech?.visemeSource ?? 'estimated',
         })
       })
       .catch(() => setLocalAiMode('unavailable'))
@@ -309,6 +323,7 @@ export function CandidatePortal() {
         onLogout={logout}
         auditLog={auditLog.filter((e) => e.actor === 'Candidate' || e.actor === 'System')}
       >
+          <div ref={stepTopRef} className="step-scroll-anchor" aria-hidden="true" />
           {step === 'C1' && (
             <section className="stack">
               <header className="section-head">
@@ -557,7 +572,13 @@ export function CandidatePortal() {
                     ))}
                   </ul>
                   <button type="button" className="primary" onClick={() => {
-                    setPipeline({ assessmentSubmitted: true })
+                    setInterviewTurns([])
+                    setInterviewStarted(false)
+                    setCandidateAnswerEn('')
+                    setCandidateAnswerAr('')
+                    setAvatarCaption('')
+                    setAvatarSpeaking(false)
+                    setPipeline({ assessmentSubmitted: true, interviewCompleted: false })
                     setOffline(true)
                     log('System', 'Offline interview policy enabled', 'External browser egress blocked for avatar interview segment', 'C4')
                     setStep('C4')
@@ -571,7 +592,7 @@ export function CandidatePortal() {
             <section className="stack">
               <header className="section-head">
                 <h1>C4 · AI avatar interview</h1>
-                <p>Candidate-only session · HR reviews recording separately · LLM: <strong>{localAiMode}</strong> · TTS: <strong>{speechStatus.tts}</strong> · ASR: <strong>{speechStatus.asr}</strong></p>
+                <p>Candidate-only session · HR reviews recording separately · LLM: <strong>{localAiMode}</strong> · TTS: <strong>{speechStatus.tts}</strong> · ASR: <strong>{speechStatus.asr}</strong> · Lip-sync: <strong>{speechStatus.viseme}</strong></p>
               </header>
               <div className="interview-steps card">
                 <span className={interviewPhase !== 'idle' ? 'done' : 'active'}>1. English Q&amp;A</span>
@@ -587,11 +608,17 @@ export function CandidatePortal() {
                   viseme={avatarSpeaking ? avatarViseme : undefined}
                 />
                 <div className="card stack">
+                  {llmBusy && (
+                    <div className="interview-loading" role="status" aria-live="polite">
+                      <span className="interview-loading-spinner" aria-hidden="true" />
+                      <span>{interviewLoadingMessage(interviewStarted, interviewPhase, interviewTurns.length)}</span>
+                    </div>
+                  )}
                   {!interviewStarted ? (
                     <button type="button" className="primary" disabled={llmBusy} onClick={() => {
                       void runLlmInterviewAction(async () => {
-                        setInterviewStarted(true)
                         const openingQuestion = await generateAvatarQuestion('en', 'opening')
+                        setInterviewStarted(true)
                         await speakAvatar({ id: nextTurnId('g'), speaker: 'avatar', language: 'en', text: openingQuestion, expression: 'gesture' })
                       })
                     }}><Play size={16} /> {llmBusy ? 'Generating opening question…' : 'Start interview'}</button>
@@ -615,6 +642,7 @@ export function CandidatePortal() {
                         <div className="stack">
                           <p className="muted tiny">Step 1/3 · Answer in English (microphone or typing), then continue to the Arabic segment.</p>
                           <VoiceAnswerInput
+                            key="c4-english-answer"
                             language="en"
                             value={candidateAnswerEn}
                             onChange={setCandidateAnswerEn}
@@ -657,6 +685,7 @@ export function CandidatePortal() {
                         <div className="stack">
                           <p className="muted tiny">Step 2/3 · Answer in Arabic to finish the interview.</p>
                           <VoiceAnswerInput
+                            key="c4-arabic-answer"
                             language="ar"
                             value={candidateAnswerAr}
                             onChange={setCandidateAnswerAr}
@@ -729,4 +758,15 @@ export function CandidatePortal() {
       {sourceDoc && <SourceDocumentModal {...sourceDoc} onClose={() => setSourceDoc(null)} />}
     </>
   )
+}
+
+function interviewLoadingMessage(
+  interviewStarted: boolean,
+  phase: InterviewUiPhase,
+  turnCount: number,
+): string {
+  if (!interviewStarted || turnCount === 0) return 'Generating opening question…'
+  if (phase === 'english_done') return 'Generating Arabic question…'
+  if (phase === 'english_answer' || phase === 'arabic_answer') return 'Generating follow-up question…'
+  return 'AI is preparing the next step…'
 }

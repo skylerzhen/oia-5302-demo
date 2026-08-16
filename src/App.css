@@ -1,5 +1,7 @@
 .app-shell {
   min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 
 .topbar {
@@ -46,7 +48,9 @@
 .main-grid {
   display: grid;
   grid-template-columns: 280px 1fr;
-  min-height: calc(100vh - 58px);
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .sidebar {
@@ -127,6 +131,9 @@
 
 .content {
   padding: 1.25rem;
+  overflow-y: auto;
+  min-height: 0;
+  scroll-behavior: auto;
 }
 
 .card {
@@ -147,6 +154,11 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1rem;
+}
+
+.step-scroll-anchor {
+  height: 0;
+  scroll-margin-top: 0;
 }
 
 .section-head h1,
@@ -606,6 +618,29 @@ textarea {
   font-size: 0.85rem;
 }
 
+.avatar-3d-loading.error {
+  color: #fecaca;
+  background: rgba(127, 29, 29, 0.35);
+}
+
+.avatar-3d-wrap {
+  position: relative;
+  width: 100%;
+}
+
+.avatar-tech-note-3d {
+  position: absolute;
+  left: 0.65rem;
+  bottom: 0.65rem;
+  z-index: 2;
+  margin: 0;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.4rem;
+  background: rgba(15, 23, 42, 0.72);
+  font-size: 0.72rem;
+  color: #ccfbf1;
+}
+
 .avatar-3d-canvas canvas {
   display: block;
   width: 100% !important;
@@ -668,6 +703,45 @@ textarea {
 
 .voice-transcript-preview p {
   margin: 0.35rem 0 0;
+}
+
+.voice-send-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.voice-send-row .primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.interview-loading {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.75rem 0.9rem;
+  border-radius: 0.65rem;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1e40af;
+  font-weight: 600;
+}
+
+.interview-loading-spinner {
+  width: 1rem;
+  height: 1rem;
+  border: 2px solid #93c5fd;
+  border-top-color: #1d4ed8;
+  border-radius: 50%;
+  animation: interviewSpin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes interviewSpin {
+  to { transform: rotate(360deg); }
 }
 
 @keyframes voicePulse {

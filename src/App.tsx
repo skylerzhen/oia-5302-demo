@@ -68,16 +68,16 @@ export default function App() {
       }
 
       if (role === 'candidate') {
+        const fresh = defaultSession()
         return {
-          ...prev,
-          role,
+          ...fresh,
+          role: 'candidate',
           offline: true,
           auditLog: [
-            ...prev.auditLog,
             createAuditEntry(
               'Candidate',
               'Session started',
-              'Jadarah token validated; offline mode for interview segment',
+              'Fresh candidate demo session; prior inputs cleared',
               'C1',
             ),
           ],

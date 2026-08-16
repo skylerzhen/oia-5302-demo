@@ -13,6 +13,7 @@ export interface TtsResult {
   audioBase64?: string
   mimeType?: string
   visemeMarks?: VisemeMark[]
+  visemeSource?: 'azure' | 'estimated'
 }
 
 export interface CvParseResult {
@@ -72,6 +73,7 @@ export interface LocalAiStatus {
     asr: boolean
     ttsProvider?: string
     asrProvider?: string
+    visemeSource?: string
   }
 }
 

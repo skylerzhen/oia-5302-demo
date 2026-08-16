@@ -1,5 +1,5 @@
 import { LogOut, Shield } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import type { AuditEntry, UiLocale, UserRole } from '../types'
 import { formatAuditTime } from '../lib/audit'
 import { NetworkStatus } from './NetworkStatus'
@@ -40,6 +40,25 @@ export function Layout({
   children,
 }: LayoutProps) {
   const roleLabel = role === 'candidate' ? 'Candidate portal (Jadarah token)' : 'HR portal (OIA SSO + MFA)'
+  const contentRef = useRef<HTMLElement>(null)
+
+  useEffect(() => {
+    const content = contentRef.current
+    if (!content) return
+
+    const scrollToTop = () => {
+      content.scrollTop = 0
+      window.scrollTo(0, 0)
+    }
+
+    scrollToTop()
+    const raf = requestAnimationFrame(scrollToTop)
+    const timer = window.setTimeout(scrollToTop, 0)
+    return () => {
+      cancelAnimationFrame(raf)
+      window.clearTimeout(timer)
+    }
+  }, [activeStep])
 
   return (
     <div className="app-shell" dir="ltr">
@@ -102,7 +121,7 @@ export function Layout({
           </div>
         </aside>
 
-        <main className="content">{children}</main>
+        <main ref={contentRef} className="content">{children}</main>
       </div>
     </div>
   )

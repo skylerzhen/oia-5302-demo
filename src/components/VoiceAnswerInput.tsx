@@ -1,5 +1,5 @@
-import { Mic, MicOff, Keyboard } from 'lucide-react'
-import { useState } from 'react'
+import { Mic, MicOff, Keyboard, Send } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import { isBrowserAsrSupported, listenForSpeech, type SpeechLanguage } from '../lib/browserAsr'
 import { localAi } from '../lib/localAi'
 
@@ -27,11 +27,19 @@ export function VoiceAnswerInput({
   const [listening, setListening] = useState(false)
   const [voiceError, setVoiceError] = useState('')
   const [showTyping, setShowTyping] = useState(false)
+  const sendRef = useRef<HTMLButtonElement | null>(null)
   const asrSupported = isBrowserAsrSupported()
+  const canSend = Boolean(value.trim()) && !disabled && !listening && !submitDisabled
+
+  useEffect(() => {
+    if (!value.trim() || listening) return
+    sendRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }, [listening, value])
 
   async function startListening() {
     if (disabled || listening || !asrSupported) return
     setVoiceError('')
+    onChange('')
     setListening(true)
     try {
       const transcript = await listenForSpeech(language)
@@ -75,9 +83,13 @@ export function VoiceAnswerInput({
         <p className="muted tiny">Microphone ASR needs Chrome/Edge/Safari. Use typing fallback below.</p>
       )}
 
-      {value && (
+      {listening && (
+        <p className="muted tiny">Speak now — recording stops automatically when you pause.</p>
+      )}
+
+      {value && !listening && (
         <div className="voice-transcript-preview" dir={language === 'ar' ? 'rtl' : 'ltr'}>
-          <span className="muted tiny">Live transcript</span>
+          <span className="muted tiny">Your answer (review before sending)</span>
           <p>{value}</p>
         </div>
       )}
@@ -88,20 +100,48 @@ export function VoiceAnswerInput({
           value={value}
           onChange={(event) => onChange(event.target.value)}
           placeholder={placeholder}
-          disabled={disabled}
+          disabled={disabled || listening}
         />
       )}
 
       {voiceError && <p className="danger-text">{voiceError}</p>}
 
-      <button
-        type="button"
-        className="primary"
-        disabled={submitDisabled || !value.trim() || disabled || listening}
-        onClick={onSubmit}
-      >
-        {submitLabel}
-      </button>
+      <div className="voice-send-row">
+        <button
+          ref={sendRef}
+          type="button"
+          className="primary"
+          disabled={!canSend}
+          onClick={onSubmit}
+        >
+          <Send size={16} /> {submitLabel}
+        </button>
+        {value.trim() && !listening && (
+          <button
+            type="button"
+            className="ghost-btn"
+            disabled={disabled || listening}
+            onClick={() => {
+              onChange('')
+              setVoiceError('')
+            }}
+          >
+            Clear &amp; record again
+          </button>
+        )}
+      </div>
+
+      {value.trim() && !canSend && !listening && (
+        <p className="muted tiny">
+          {avatarBusyHint(disabled, submitDisabled)}
+        </p>
+      )}
     </div>
   )
+}
+
+function avatarBusyHint(disabled: boolean, submitDisabled: boolean) {
+  if (submitDisabled) return 'Generating the next question…'
+  if (disabled) return 'Wait for the avatar to finish speaking, then send your answer.'
+  return 'Send when ready.'
 }

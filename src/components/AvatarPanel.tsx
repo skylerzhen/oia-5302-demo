@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
+import { avatarLipSyncBus } from '../lib/avatarLipSyncBus'
 import { textToVisemes } from '../lib/visemes'
 import type { Viseme } from '../types'
 
@@ -16,6 +17,13 @@ export function AvatarPanel({ speaking, language, caption, expression = 'neutral
   const visemes = useMemo(() => textToVisemes(caption, language), [caption, language])
   const [visemeIndex, setVisemeIndex] = useState(0)
   const [hasVroidVrm, setHasVroidVrm] = useState(false)
+  const [jawOpen, setJawOpen] = useState(0)
+
+  useEffect(() => {
+    return avatarLipSyncBus.subscribe((snapshot) => {
+      setJawOpen(snapshot.jawOpen)
+    })
+  }, [])
 
   useEffect(() => {
     if (!speaking || drivenViseme) {
@@ -44,11 +52,14 @@ export function AvatarPanel({ speaking, language, caption, expression = 'neutral
   return (
     <div className="avatar-panel">
       <div className="video-frame">
-        <span className="live-tag">{speaking ? 'Speaking' : 'AI Interviewer'}</span>
+        <span className="live-tag">{speaking ? 'Speaking' : hasVroidVrm ? 'VRoid 3D' : 'AI Interviewer'}</span>
         {hasVroidVrm ? (
-          <Suspense fallback={<div className="avatar-3d-loading">Loading local 3D avatar…</div>}>
-            <Avatar3DPanel src="/avatar/oia-vroid-interviewer.vrm" speaking={speaking} viseme={viseme} expression={expression} />
-          </Suspense>
+          <div className="avatar-3d-wrap">
+            <Suspense fallback={<div className="avatar-3d-loading">Loading VRoid avatar…</div>}>
+              <Avatar3DPanel src="/avatar/oia-vroid-interviewer.vrm" speaking={speaking} viseme={viseme} expression={expression} />
+            </Suspense>
+            <div className="avatar-tech-note avatar-tech-note-3d">{expression} · VRoid VRM · viseme lip-sync</div>
+          </div>
         ) : (
           <div className={`avatar-stage expression-${expression} ${speaking ? 'speaking' : ''}`} aria-label="OIA AI interviewer avatar">
             <svg className="avatar-illustration" viewBox="0 0 320 360" role="img" aria-label="2D OIA interviewer">
@@ -62,18 +73,19 @@ export function AvatarPanel({ speaking, language, caption, expression = 'neutral
               <circle cx="128" cy="125" r="7" fill="#1e293b" />
               <circle cx="191" cy="125" r="7" fill="#1e293b" />
               <path d="M112 104c12-10 25-10 35-3M174 101c11-7 24-7 35 3" stroke="#1e293b" strokeWidth="5" strokeLinecap="round" fill="none" />
-              <g className={`avatar-mouth viseme-${viseme}`}>
+              <g className={`avatar-mouth viseme-${viseme}`} style={{ transform: `scale(${1 + jawOpen * 0.35})` }}>
                 <ellipse cx="160" cy="164" rx="24" ry="7" fill="#7f1d1d" />
               </g>
               <path d="M111 186c31 20 67 20 98 0" stroke="#b45309" strokeWidth="3" fill="none" opacity=".45" />
             </svg>
-            <div className="avatar-tech-note">{expression} · TTS viseme → lip-sync</div>
+            <div className="avatar-tech-note">{expression} · VRoid VRM · TTS viseme lip-sync</div>
           </div>
         )}
       </div>
 
       <div className="avatar-meta">
         <span className="badge">{language === 'ar' ? 'Arabic' : 'English'}</span>
+        {hasVroidVrm && <span className="badge">VRoid 3D</span>}
         {speaking && <span className="badge live">Live</span>}
       </div>
 

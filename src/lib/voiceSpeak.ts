@@ -1,7 +1,13 @@
 import { localAi, type TtsResult } from './localAi'
 import type { Viseme } from '../types'
-import { buildVisemeTimeline, runVisemeTimeline, type VisemeMark } from './visemeTimeline'
-import { textToVisemes } from './visemes'
+import { avatarLipSyncBus } from './avatarLipSyncBus'
+import { buildVisemeTimeline } from './visemeTimeline'
+import {
+  marksFromTts,
+  runAudioSyncedLipSync,
+  runClockSyncedLipSync,
+  type LipSyncTick,
+} from './audioSyncedLipSync'
 
 export type SpeechLanguage = 'en' | 'ar'
 
@@ -21,10 +27,17 @@ function pickVoice(language: SpeechLanguage) {
   return preferred ?? voices[0] ?? null
 }
 
+function publishTick(tick: LipSyncTick) {
+  avatarLipSyncBus.set({
+    viseme: tick.viseme,
+    jawOpen: tick.jawOpen,
+    speaking: true,
+  })
+}
+
 async function speakWithBrowser(
   text: string,
   language: SpeechLanguage,
-  onViseme: (viseme: Viseme) => void,
   signal?: AbortSignal,
 ) {
   if (!('speechSynthesis' in window)) {
@@ -37,11 +50,13 @@ async function speakWithBrowser(
   if (voice) utterance.voice = voice
 
   await new Promise<void>((resolve, reject) => {
-    let visemeRunner: Promise<void> | null = null
+    let lipSyncAbort: AbortController | null = null
+    let lipSyncPromise: Promise<void> | null = null
 
     const cleanup = () => {
       window.speechSynthesis.cancel()
-      onViseme('rest')
+      lipSyncAbort?.abort()
+      avatarLipSyncBus.set({ viseme: 'rest', jawOpen: 0, speaking: false })
     }
 
     const onAbort = () => {
@@ -56,15 +71,23 @@ async function speakWithBrowser(
     signal?.addEventListener('abort', onAbort, { once: true })
 
     utterance.onstart = () => {
-      const durationMs = estimateDurationMs(text, language)
-      const marks = buildVisemeTimeline(text, language, durationMs)
-      visemeRunner = runVisemeTimeline(marks, onViseme, signal).catch(() => undefined)
+      avatarLipSyncBus.set({ speaking: true, viseme: 'rest', jawOpen: 0 })
+      lipSyncAbort = new AbortController()
+      const estimatedMs = estimateDurationMs(text, language)
+      const marks = buildVisemeTimeline(text, language, estimatedMs)
+      lipSyncPromise = runClockSyncedLipSync({
+        marks,
+        durationMs: estimatedMs * 1.08,
+        onTick: publishTick,
+        signal: lipSyncAbort.signal,
+      }).catch(() => undefined)
     }
 
     utterance.onend = async () => {
       signal?.removeEventListener('abort', onAbort)
-      if (visemeRunner) await visemeRunner
-      onViseme('rest')
+      lipSyncAbort?.abort()
+      if (lipSyncPromise) await lipSyncPromise.catch(() => undefined)
+      avatarLipSyncBus.set({ viseme: 'rest', jawOpen: 0, speaking: false })
       resolve()
     }
 
@@ -82,42 +105,21 @@ async function speakWithBrowser(
 async function speakWithAudio(
   audioBase64: string,
   mimeType: string,
-  marks: VisemeMark[],
-  onViseme: (viseme: Viseme) => void,
+  marks: ReturnType<typeof buildVisemeTimeline>,
   signal?: AbortSignal,
 ) {
   const audio = new Audio(`data:${mimeType};base64,${audioBase64}`)
   audio.preload = 'auto'
+  avatarLipSyncBus.set({ speaking: true, viseme: 'rest', jawOpen: 0 })
 
-  await new Promise<void>((resolve, reject) => {
-    const onAbort = () => {
-      audio.pause()
-      onViseme('rest')
-      reject(new DOMException('Speech interrupted', 'AbortError'))
-    }
-
-    if (signal?.aborted) {
-      onAbort()
-      return
-    }
-    signal?.addEventListener('abort', onAbort, { once: true })
-
-    const visemePromise = runVisemeTimeline(marks, onViseme, signal).catch(() => undefined)
-
-    audio.onended = async () => {
-      signal?.removeEventListener('abort', onAbort)
-      await visemePromise
-      onViseme('rest')
-      resolve()
-    }
-
-    audio.onerror = () => {
-      signal?.removeEventListener('abort', onAbort)
-      reject(new Error('Could not play synthesized speech audio'))
-    }
-
-    void audio.play().catch(reject)
+  await runAudioSyncedLipSync({
+    audio,
+    marks,
+    onTick: publishTick,
+    signal,
   })
+
+  avatarLipSyncBus.set({ viseme: 'rest', jawOpen: 0, speaking: false })
 }
 
 export function isBrowserTtsSupported() {
@@ -127,10 +129,14 @@ export function isBrowserTtsSupported() {
 export async function speakInterviewLine(options: {
   text: string
   language: SpeechLanguage
-  onViseme: (viseme: Viseme) => void
+  onViseme?: (viseme: Viseme) => void
   signal?: AbortSignal
 }) {
   const { text, language, onViseme, signal } = options
+  const unsubscribe = avatarLipSyncBus.subscribe((snapshot) => {
+    onViseme?.(snapshot.viseme)
+  })
+
   let serverResult: TtsResult | null = null
 
   try {
@@ -139,22 +145,26 @@ export async function speakInterviewLine(options: {
     serverResult = null
   }
 
-  if (serverResult?.audioBase64) {
-    const marks = serverResult.visemeMarks?.length
-      ? serverResult.visemeMarks
-      : buildVisemeTimeline(text, language, estimateDurationMs(text, language))
-    await speakWithAudio(
-      serverResult.audioBase64,
-      serverResult.mimeType ?? 'audio/mpeg',
-      marks,
-      onViseme,
-      signal,
-    )
-    return serverResult.mode
-  }
+  try {
+    if (serverResult?.audioBase64) {
+      const marks = serverResult.visemeMarks?.length
+        ? serverResult.visemeMarks
+        : marksFromTts(text, language, estimateDurationMs(text, language))
+      await speakWithAudio(
+        serverResult.audioBase64,
+        serverResult.mimeType ?? 'audio/mpeg',
+        marks,
+        signal,
+      )
+      return serverResult.mode
+    }
 
-  await speakWithBrowser(text, language, onViseme, signal)
-  return 'browser'
+    await speakWithBrowser(text, language, signal)
+    return 'browser'
+  } finally {
+    unsubscribe()
+    avatarLipSyncBus.reset()
+  }
 }
 
 export function preloadSpeechVoices() {
@@ -163,8 +173,4 @@ export function preloadSpeechVoices() {
   window.speechSynthesis.onvoiceschanged = () => {
     window.speechSynthesis.getVoices()
   }
-}
-
-export function previewVisemesForCaption(text: string, language: SpeechLanguage) {
-  return textToVisemes(text, language)
 }
