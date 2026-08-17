@@ -1,4 +1,7 @@
 import { spawn } from 'node:child_process'
+import { loadEnv } from '../server/load-env.mjs'
+
+loadEnv()
 
 const api = spawn('node', ['server/index.mjs'], { stdio: 'inherit', env: process.env })
 const web = spawn('npx', ['vite'], { stdio: 'inherit', env: process.env })

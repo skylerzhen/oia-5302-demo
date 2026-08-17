@@ -1,6 +1,8 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { resolveCvSourceText } from './cv-sources.mjs'
+import { normalizeCvParse, loadFallbackCvParse } from './cv-parse-normalize.mjs'
+import { existsSync } from 'node:fs'
 import { heygenAvailability } from './heygen-handlers.mjs'
 import { liveAvatarAvailability } from './liveavatar-handlers.mjs'
 import { chatJson, chatText, getLlmConfig } from './llm-client.mjs'
@@ -12,23 +14,21 @@ function loadJobDescription() {
 }
 
 function normalizeCvFields(rawFields) {
-  const allowedKeys = ['name', 'email', 'experience', 'education', 'certification']
-  const fields = Array.isArray(rawFields) ? rawFields : []
-  return allowedKeys.map((key) => {
-    const entry = fields.find((field) => field.key === key) ?? {}
-    const value = typeof entry.value === 'string' ? entry.value.trim() : ''
-    const status = entry.status === 'parsed' || entry.status === 'review' || entry.status === 'missing'
-      ? entry.status
-      : value ? 'parsed' : 'missing'
+  return normalizeCvParse({ fields: rawFields }).fields
+}
+
+function tryAdapterFallback(body) {
+  const sampleId = String(body.sampleId ?? 'pdf-en')
+  const fallbackPath = resolve(process.cwd(), 'data/cv-parse-fallback', `${sampleId}.json`)
+  if (!existsSync(fallbackPath)) return null
+  try {
     return {
-      key,
-      value: value || undefined,
-      status,
-      confidence: typeof entry.confidence === 'number' ? entry.confidence : undefined,
-      evidence: typeof entry.evidence === 'string' ? entry.evidence : value,
-      source: typeof entry.source === 'string' ? entry.source : 'LLM extraction',
+      mode: 'adapter-fallback',
+      ...normalizeCvParse(loadFallbackCvParse(sampleId), body),
     }
-  })
+  } catch {
+    return null
+  }
 }
 
 export async function handleStatus() {
@@ -70,30 +70,63 @@ export async function handleParseCv(body) {
   }
 
   const { fastModel } = getLlmConfig()
-  const parsed = await chatJson({
-    model: fastModel,
-    system: `You extract structured candidate profile fields from CV text for an OIA recruitment demo.
-Return JSON with shape:
+  let parsed
+  try {
+    parsed = await chatJson({
+      model: fastModel,
+      system: `You extract structured candidate profile data from CV text for an OIA recruitment demo.
+Return JSON only:
 {
   "fields": [
-    { "key": "name|email|experience|education|certification", "value": "string", "status": "parsed|review|missing", "confidence": 0-1 optional, "evidence": "short quote", "source": "section label" }
+    { "key": "<scalarKey>", "value": "string", "status": "parsed|review|missing", "confidence": 0-1 optional, "evidence": "short quote from CV", "source": "section label" }
+  ],
+  "skills": { "items": ["skill1","skill2"], "status": "parsed|review|missing", "evidence": "quote", "source": "section" },
+  "languages": { "items": ["Arabic","English"], "status": "parsed|review|missing", "evidence": "quote", "source": "section" },
+  "workHistory": [
+    {
+      "company": "string",
+      "title": "string",
+      "start": "YYYY or YYYY-MM",
+      "end": "YYYY or Present or empty",
+      "responsibilities": ["bullet1","bullet2"],
+      "status": "parsed|review|missing",
+      "evidence": "quote",
+      "source": "Experience section"
+    }
   ]
 }
-Rules:
-- experience must be years as a number string like "7"
-- certification may be missing; use status "missing" and empty value
-- if scanned OCR is uncertain, mark education as "review" with confidence below 0.9
-- evidence must quote or paraphrase the source text briefly`,
-    user: JSON.stringify({
-      fileName: body.fileName,
-      isScannedPdf: Boolean(body.isScannedPdf ?? body.isArabicScan),
-      cvText: sourceText,
-    }),
-  })
 
+Scalar field keys (include one entry per key):
+name, email, phone, nationality, address, experience,
+educationLevel, university, gpa, graduationDate, specialization,
+companyName, positionTitle, industry, location, certification
+
+Rules:
+- NEVER invent values. If not clearly in the CV text → status "missing" and empty value/items.
+- experience = total years as a number string like "7" only when stated.
+- skills.items = technical/professional skills only (not languages).
+- languages.items = spoken languages only.
+- workHistory = one object per role with responsibilities as bullet strings from the CV.
+- Use status "review" when OCR/scan uncertainty or partial extraction.
+- certification MUST be missing with empty value when no certification appears in the CV (v1 Sara CV has NO CFA).
+- evidence must quote or closely paraphrase the source text.`,
+      user: JSON.stringify({
+        fileName: body.fileName,
+        sampleId: body.sampleId,
+        isScannedPdf: Boolean(body.isScannedPdf ?? body.isArabicScan),
+        cvText: sourceText,
+      }),
+    })
+  } catch (error) {
+    const fallback = tryAdapterFallback(body)
+    if (fallback) return fallback
+    throw error
+  }
+
+  const normalized = normalizeCvParse(parsed, body)
   return {
     mode: 'model',
-    fields: normalizeCvFields(parsed.fields),
+    ...normalized,
   }
 }
 
@@ -118,7 +151,7 @@ Return only the question text, no quotes or preamble.`,
   return { mode: 'model', text }
 }
 
-function trimPriorTurns(priorTurns, limit = 4) {
+function trimPriorTurns(priorTurns, limit = 8) {
   const turns = Array.isArray(priorTurns) ? priorTurns : []
   return turns.slice(-limit).map((turn) => ({
     speaker: turn.speaker,
@@ -127,24 +160,62 @@ function trimPriorTurns(priorTurns, limit = 4) {
   }))
 }
 
+function formatInterviewTranscript(priorTurns) {
+  return priorTurns
+    .map((turn) => {
+      const role = turn.speaker === 'avatar' ? 'Interviewer' : 'Candidate'
+      return `${role}: ${turn.text}`
+    })
+    .join('\n')
+}
+
+function extractAnswerHook(answer) {
+  const trimmed = String(answer ?? '').trim().replace(/\s+/g, ' ')
+  if (!trimmed) return 'your previous response'
+  const clause = trimmed.split(/[.!?]/)[0]?.trim() || trimmed
+  return clause.slice(0, 80)
+}
+
 export async function handleFollowUp(body) {
   const { fastModel } = getLlmConfig()
   const answer = String(body.answer ?? '').trim()
   if (!answer) throw new Error('Candidate answer is required')
 
+  const priorTurns = trimPriorTurns(body.priorTurns)
+  const candidateRound = priorTurns.filter((turn) => turn.speaker === 'candidate').length
+  const answerHook = extractAnswerHook(answer)
+  const profile = body.candidateProfile && typeof body.candidateProfile === 'object'
+    ? body.candidateProfile
+    : {}
+
+  const transcript = formatInterviewTranscript(priorTurns)
+  const profileLine = [
+    profile.name ? `Name: ${profile.name}` : '',
+    profile.experience ? `Experience: ${profile.experience} years` : '',
+    profile.companyName ? `Current employer: ${profile.companyName}` : '',
+  ].filter(Boolean).join(' · ')
+
+  const user = [
+    profileLine ? `Candidate profile: ${profileLine}` : '',
+    transcript ? `Transcript so far:\n${transcript}` : '',
+    `Latest candidate answer (quote a specific term from this answer in your follow-up):\n"""${answer}"""`,
+    `Follow-up round ${candidateRound} of 3.`,
+  ].filter(Boolean).join('\n\n')
+
   const text = await chatText({
     model: fastModel,
-    maxTokens: 64,
-    temperature: 0.3,
-    system: `OIA senior financial analyst interview. Reply with ONE short English follow-up question (max 18 words).
-Reference a concrete detail from the latest answer. No preamble.`,
-    user: JSON.stringify({
-      answer: answer.slice(0, 1200),
-      priorTurns: trimPriorTurns(body.priorTurns),
-    }),
+    maxTokens: 96,
+    temperature: 0.45,
+    system: `You are an OIA senior financial analyst interviewer.
+Reply with ONE English follow-up question only — no greeting, no praise, no preamble.
+Rules:
+- Must include at least one concrete noun or phrase taken verbatim from the latest answer (e.g. "${answerHook.slice(0, 40)}").
+- Max 22 words.
+- Probe deeper: metrics, stakeholders, trade-offs, or validation — vary by round.`,
+    user,
   })
 
-  const evidencePhrase = answer.split(/\s+/).slice(0, 8).join(' ')
+  const evidencePhrase = answerHook.split(/\s+/).slice(0, 8).join(' ')
   return { mode: 'model', text, evidencePhrase }
 }
 

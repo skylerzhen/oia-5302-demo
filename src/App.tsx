@@ -171,6 +171,21 @@ export default function App() {
       patchSession((prev) => ({
         fields: typeof fields === 'function' ? fields(prev.fields) : fields,
       })),
+    profileSkills: session.profileSkills,
+    setProfileSkills: (profileSkills) =>
+      patchSession((prev) => ({
+        profileSkills: typeof profileSkills === 'function' ? profileSkills(prev.profileSkills) : profileSkills,
+      })),
+    profileLanguages: session.profileLanguages,
+    setProfileLanguages: (profileLanguages) =>
+      patchSession((prev) => ({
+        profileLanguages: typeof profileLanguages === 'function' ? profileLanguages(prev.profileLanguages) : profileLanguages,
+      })),
+    profileWorkHistory: session.profileWorkHistory,
+    setProfileWorkHistory: (profileWorkHistory) =>
+      patchSession((prev) => ({
+        profileWorkHistory: typeof profileWorkHistory === 'function' ? profileWorkHistory(prev.profileWorkHistory) : profileWorkHistory,
+      })),
     interviewTurns: session.interviewTurns,
     setInterviewTurns: (turns) =>
       patchSession((prev) => ({

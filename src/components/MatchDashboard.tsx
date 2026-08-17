@@ -1,3 +1,4 @@
+import { Eye } from 'lucide-react'
 import { controlledViewUrl } from '../lib/controlledDocUrl'
 import type { CandidateMatch } from '../types'
 
@@ -8,9 +9,18 @@ interface MatchDashboardProps {
   onSelect: (id: string) => void
   onEvidence: (title: string, evidence: string, documentText: string) => void
   onOpenSource: (title: string, url: string) => void
+  onViewJourney: (candidateId: string) => void
 }
 
-export function MatchDashboard({ jobTitle, matches, selectedId, onSelect, onEvidence, onOpenSource }: MatchDashboardProps) {
+export function MatchDashboard({
+  jobTitle,
+  matches,
+  selectedId,
+  onSelect,
+  onEvidence,
+  onOpenSource,
+  onViewJourney,
+}: MatchDashboardProps) {
   const selected = matches.find((m) => m.candidateId === selectedId) ?? matches[0]
   const qualifiedCount = matches.filter((m) => m.qualified).length
   const avgScore = Math.round(matches.reduce((s, m) => s + m.totalScore, 0) / matches.length)
@@ -79,15 +89,24 @@ export function MatchDashboard({ jobTitle, matches, selectedId, onSelect, onEvid
             <h3>{selected.candidate.name}</h3>
             <p className="muted">{selected.candidate.education}</p>
             <p><strong>{selected.totalScore}%</strong> overall · {selected.matchedCount}/{selected.totalDimensions} dimensions matched</p>
-            {selected.candidate.cvFile && (
+            <div className="candidate-actions">
               <button
                 type="button"
-                className="source-file-link"
-                onClick={() => onOpenSource('Controlled CV source', controlledViewUrl(selected.candidate.cvFile!))}
+                className="primary-outline"
+                onClick={() => onViewJourney(selected.candidateId)}
               >
-                Open controlled CV source
+                <Eye size={16} /> View candidate journey
               </button>
-            )}
+              {selected.candidate.cvFile && (
+                <button
+                  type="button"
+                  className="source-file-link"
+                  onClick={() => onOpenSource('Controlled CV source', controlledViewUrl(selected.candidate.cvFile!))}
+                >
+                  Open CV source
+                </button>
+              )}
+            </div>
             <h4>Dimension breakdown</h4>
             <ul className="dim-bars">
               {selected.dimensions.map((d) => {

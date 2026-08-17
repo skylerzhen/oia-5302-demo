@@ -1,3 +1,6 @@
+import { withApiAuthBody } from './apiAuth'
+import type { ProfileTagGroup, WorkExperienceEntry } from '../types'
+
 export type LocalAiMode = 'model' | 'adapter-fallback' | 'browser'
 
 export interface VisemeMark {
@@ -27,6 +30,9 @@ export interface CvParseResult {
     source: string
     evidence?: string
   }>
+  skills?: ProfileTagGroup
+  languages?: ProfileTagGroup
+  workHistory?: Array<Omit<WorkExperienceEntry, 'id'>>
 }
 
 export interface FollowUpResult {
@@ -157,7 +163,7 @@ async function post<T>(path: string, payload: object, timeoutMs = 30_000): Promi
     const response = await window.fetch(apiUrl(path), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(withApiAuthBody(payload)),
       signal: controller.signal,
     })
     if (!response.ok) {
@@ -190,7 +196,8 @@ export const localAi = {
   followUp: (payload: {
     answer: string
     priorTurns?: Array<{ speaker: string; language: string; text: string }>
-  }) => post<FollowUpResult>('/api/local-ai/llm/follow-up', payload),
+    candidateProfile?: CandidateProfileInput & { companyName?: string }
+  }) => post<FollowUpResult>('/api/local-ai/llm/follow-up', payload, 45_000),
   generateAssessment: (payload: {
     turns: Array<{ id: string; speaker: string; language: string; text: string }>
     assessmentScore: number

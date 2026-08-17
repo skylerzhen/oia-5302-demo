@@ -8,6 +8,7 @@
  *   npm run verify:azure
  */
 import { loadEnv } from '../server/load-env.mjs'
+import { authHeaders } from '../server/api-auth.mjs'
 
 loadEnv()
 
@@ -19,8 +20,12 @@ const baseUrl = urlFlag
   ?? process.env.LLM_API_URL
   ?? `http://127.0.0.1:${process.env.LLM_API_PORT ?? process.env.PORT ?? 8787}`
 
-async function fetchJson(path, init) {
-  const res = await fetch(`${baseUrl.replace(/\/$/, '')}${path}`, init)
+async function fetchJson(path, init = {}) {
+  const method = init.method ?? 'GET'
+  const headers = method === 'POST'
+    ? authHeaders({ 'Content-Type': 'application/json', ...(init.headers ?? {}) })
+    : init.headers
+  const res = await fetch(`${baseUrl.replace(/\/$/, '')}${path}`, { ...init, headers })
   const text = await res.text()
   let body
   try {

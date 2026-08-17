@@ -6,6 +6,7 @@
  *   node scripts/verify-openai-tts.mjs --url https://oia-5302-demo.onrender.com
  */
 import { loadEnv } from '../server/load-env.mjs'
+import { authHeaders } from '../server/api-auth.mjs'
 import { handleSynthesize } from '../server/speech-handlers.mjs'
 import { speechAvailability } from '../server/speech-handlers.mjs'
 
@@ -13,11 +14,13 @@ const urlArg = process.argv.find((arg) => arg.startsWith('--url='))?.slice(6)
   ?? (process.argv.includes('--url') ? process.argv[process.argv.indexOf('--url') + 1] : null)
 
 async function verifyRemote(baseUrl) {
+  loadEnv()
+  const headers = authHeaders({ 'Content-Type': 'application/json' })
   const statusRes = await fetch(`${baseUrl.replace(/\/$/, '')}/api/local-ai/status`)
   const status = await statusRes.json()
   const synthRes = await fetch(`${baseUrl.replace(/\/$/, '')}/api/local-ai/tts/synthesize`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify({ text: 'OpenAI TTS verification line for OIA demo.' }),
   })
   const synth = await synthRes.json()

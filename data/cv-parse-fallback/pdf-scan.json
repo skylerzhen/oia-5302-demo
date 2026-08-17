@@ -1,0 +1,34 @@
+{
+  "fields": [
+    { "key": "name", "value": "Noor Al-Hashmi", "status": "parsed", "evidence": "Noor Al-Hashmi", "source": "Scanned PDF (OCR)" },
+    { "key": "email", "value": "n.hashmi@example.om", "status": "parsed", "evidence": "n.hashmi@example.om", "source": "Scanned PDF (OCR)" },
+    { "key": "phone", "value": "", "status": "missing", "evidence": "", "source": "Not found in source document" },
+    { "key": "nationality", "value": "", "status": "missing", "evidence": "", "source": "Not found in source document" },
+    { "key": "address", "value": "", "status": "missing", "evidence": "", "source": "Not found in source document" },
+    { "key": "experience", "value": "6", "status": "parsed", "evidence": "Six years risk reporting", "source": "Scanned PDF (OCR)" },
+    { "key": "educationLevel", "value": "MSc", "status": "review", "evidence": "MSc Economics", "source": "Scanned PDF (OCR)", "confidence": 0.82 },
+    { "key": "university", "value": "", "status": "missing", "evidence": "", "source": "Not found in source document" },
+    { "key": "gpa", "value": "", "status": "missing", "evidence": "", "source": "Not found in source document" },
+    { "key": "graduationDate", "value": "", "status": "missing", "evidence": "", "source": "Not found in source document" },
+    { "key": "specialization", "value": "Economics", "status": "review", "evidence": "MSc Economics", "source": "Scanned PDF (OCR)", "confidence": 0.82 },
+    { "key": "companyName", "value": "", "status": "missing", "evidence": "", "source": "Not found in source document" },
+    { "key": "positionTitle", "value": "", "status": "missing", "evidence": "", "source": "Not found in source document" },
+    { "key": "industry", "value": "Banking", "status": "review", "evidence": "risk reporting in banking sector", "source": "Scanned PDF (OCR)", "confidence": 0.8 },
+    { "key": "location", "value": "", "status": "missing", "evidence": "", "source": "Not found in source document" },
+    { "key": "certification", "value": "", "status": "missing", "evidence": "", "source": "Not found in source document" }
+  ],
+  "skills": {
+    "items": ["Risk reporting", "Excel modelling"],
+    "status": "review",
+    "evidence": "Risk reporting, Excel modelling",
+    "source": "Scanned PDF (OCR)",
+    "confidence": 0.85
+  },
+  "languages": {
+    "items": ["English"],
+    "status": "parsed",
+    "evidence": "English",
+    "source": "Scanned PDF (OCR)"
+  },
+  "workHistory": []
+}

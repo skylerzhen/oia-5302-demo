@@ -64,6 +64,7 @@ npm run verify:liveavatar:render
 - OpenAI TTS: per character (same as before).
 - LiveAvatar Lite: billed by LiveAvatar session/speak usage — check [LiveAvatar pricing](https://www.liveavatar.com/pricing).
 - Server rate limits apply to `/api/liveavatar/*` routes.
+- **API protection:** set `API_SECRET` on Render; use the same value as `VITE_API_SECRET` when building Surge (`npm run deploy:surge`). All billable `POST` routes require `Authorization: Bearer <secret>`.
 
 ## API routes
 

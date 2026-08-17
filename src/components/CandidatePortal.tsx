@@ -1,55 +1,80 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { CheckCircle2, FileUp, Play, Upload } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
+import { CheckCircle2, ChevronUp, FileUp, Play, Upload } from 'lucide-react'
 import { useDemo } from '../context/DemoContext'
 import { AvatarPanel } from './AvatarPanel'
 import { VoiceAnswerInput } from './VoiceAnswerInput'
 import { EvidenceModal } from './EvidenceModal'
 import { SourceDocumentModal } from './SourceDocumentModal'
+import { CvProfilePanel } from './CvProfilePanel'
 import { CvParseConfirmModal } from './CvParseConfirmModal'
 import { Layout } from './Layout'
-import { CV_UPLOAD_SAMPLES, CV_V2_DIFF, emptyProfileFields } from '../data/candidates'
+import { CV_UPLOAD_SAMPLES, CV_V2_DIFF } from '../data/candidates'
 import { resolveSampleProfileId } from '../data/cvParseProfiles'
 import { FINANCE_JOB } from '../data/job'
 import { MCQ_QUESTIONS, INTERVIEW_PRESET } from '../data/questions'
 import { CANDIDATE_STEPS } from '../lib/demo'
-import { localAi, type TtsResult } from '../lib/localAi'
+import { localAi, type FollowUpResult, type TtsResult } from '../lib/localAi'
 import { preloadSpeechVoices, setHeyGenAvatarEnabled, setLiveAvatarEnabled, speakInterviewLine, warmInterviewSpeech } from '../lib/voiceSpeak'
 import { installLiveAvatarLifecycleGuards, primeLiveAvatarAudioPlayback, stopLiveAvatarSession } from '../lib/liveavatarPlayer'
 import { unlockAudioPlayback } from '../lib/audioUnlock'
 import { avatarLipSyncBus } from '../lib/avatarLipSyncBus'
 import { controlledViewUrl } from '../lib/controlledDocUrl'
-import { applyParsedFields, runCvUploadFlow, type CvUploadProgress } from '../lib/cvUploadFlow'
-import type { CvParseFieldResult } from '../data/cvParseProfiles'
+import { runCvUploadFlow, type CvUploadProgress, type CvUploadResult } from '../lib/cvUploadFlow'
 import {
   buildImprovementTips,
   buildInterviewFollowUp,
   getInterviewUiPhase,
+  interviewAnswerProgress,
   type InterviewUiPhase,
 } from '../lib/matching'
 import { getPrimaryMatch, loadLlmMatches } from '../lib/llmMatching'
 import { profileFieldsKey } from '../lib/profileFieldsKey'
 import type { CandidateMatchWithTips } from '../lib/matching'
 import { scrollElementIntoContent, scrollPageToTop } from '../lib/scrollPageToTop'
-import type { CandidateStepId, FieldStatus, InterviewTurn, Viseme } from '../types'
+import type { CandidateStepId, FieldStatus, InterviewTurn, ProfileTagGroup, Viseme, WorkExperienceEntry } from '../types'
 
-function statusLabel(status: FieldStatus): string {
-  if (status === 'parsed') return 'Parsed'
-  if (status === 'review') return 'Needs review'
-  return 'Missing'
+function hasCvUploadEvidence(
+  fields: { evidence?: string; source?: string; status: FieldStatus }[],
+  uploadedSamples: string[],
+  workHistory: WorkExperienceEntry[],
+) {
+  if (uploadedSamples.length > 0) return true
+  if (workHistory.length > 0) return true
+  return fields.some((f) => f.status !== 'missing' && Boolean(f.evidence?.trim() || f.source?.trim()))
+}
+
+function profileSubmitBlockReason(
+  fields: { key: string; label: string; value: string; status: FieldStatus }[],
+  profileFromCv: boolean,
+  uploadedSamples: string[],
+  workHistory: WorkExperienceEntry[],
+): string | null {
+  if (!profileFromCv) return 'Upload a CV and click Apply to profile in the extraction preview.'
+  if (!hasCvUploadEvidence(fields, uploadedSamples, workHistory)) {
+    return 'Open the extraction preview after upload and click Apply to profile.'
+  }
+  const emptyRequired = fields.filter((f) => f.status !== 'missing' && !f.value.trim())
+  if (emptyRequired.length > 0) {
+    return `Fill in: ${emptyRequired.map((f) => f.label).join(', ')}`
+  }
+  return null
 }
 
 export function CandidatePortal() {
   const {
     offline, setOffline, log, integrationSyncs, syncIntegration,
     pipeline, setPipeline,
-    fields, setFields, interviewTurns, setInterviewTurns,
+    fields, setFields,
+    profileSkills, setProfileSkills,
+    profileLanguages, setProfileLanguages,
+    profileWorkHistory, setProfileWorkHistory,
+    interviewTurns, setInterviewTurns,
     assessmentScore, setAssessmentScore,
     candidateStep: step, setCandidateStep: setStep, logout,
   } = useDemo()
 
   const [uploadedSamples, setUploadedSamples] = useState<string[]>([])
   const [draftSaved, setDraftSaved] = useState(false)
-  const [fieldsConfirmed, setFieldsConfirmed] = useState(false)
   const [mcqAnswers, setMcqAnswers] = useState<Record<string, number>>({})
   const [examSubmitted, setExamSubmitted] = useState(false)
   const [examBreakdown, setExamBreakdown] = useState<{ id: string; correct: boolean }[]>([])
@@ -70,12 +95,9 @@ export function CandidatePortal() {
   const [llmMatch, setLlmMatch] = useState<CandidateMatchWithTips | null>(null)
   const [scanImported, setScanImported] = useState(false)
   const [profileFromCv, setProfileFromCv] = useState(() => fields.some((f) => f.value.trim()))
-  const [parsePreview, setParsePreview] = useState<{
-    sampleId: string
-    fileName: string
-    fields: CvParseFieldResult[]
-    isScannedPdf: boolean
-  } | null>(null)
+  const [appliedCvFileName, setAppliedCvFileName] = useState('')
+  const [uploadExpanded, setUploadExpanded] = useState(false)
+  const [parsePreview, setParsePreview] = useState<CvUploadResult | null>(null)
   const [dragActive, setDragActive] = useState(false)
   const [reviewReady, setReviewReady] = useState(false)
   const [uploadBusy, setUploadBusy] = useState(false)
@@ -106,6 +128,7 @@ export function CandidatePortal() {
   }
 
   const interviewPhase = getInterviewUiPhase(interviewTurns, pipeline.interviewCompleted)
+  const interviewProgress = interviewAnswerProgress(interviewTurns)
   const match = llmMatch
   const fieldsKey = useMemo(() => profileFieldsKey(fields), [fields])
 
@@ -226,6 +249,7 @@ export function CandidatePortal() {
     isScannedPdf?: boolean
   }) {
     if (uploadBusy || uploadedSamples.includes(input.sampleId)) return
+    if (profileFromCv) setUploadExpanded(true)
     setUploadBusy(true)
     setUploadError('')
     setReviewReady(false)
@@ -241,12 +265,7 @@ export function CandidatePortal() {
         },
         setUploadProgress,
       )
-      setParsePreview({
-        sampleId: input.sampleId,
-        fileName: result.fileName,
-        fields: result.fields,
-        isScannedPdf: result.isScannedPdf,
-      })
+      setParsePreview(result)
       log('System', 'LLM CV parsing invoked', `${result.fileName}; ${result.fileSize} bytes; mode: ${result.mode}`, 'C1')
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Upload failed'
@@ -277,18 +296,21 @@ export function CandidatePortal() {
 
   function acceptParsePreview() {
     if (!parsePreview) return
-    const nextFields = applyParsedFields(emptyProfileFields(), parsePreview.fields)
-    setFields(nextFields)
-    setFieldsConfirmed(false)
+    setFields(parsePreview.fields)
+    setProfileSkills(parsePreview.skills)
+    setProfileLanguages(parsePreview.languages)
+    setProfileWorkHistory(parsePreview.workHistory)
     setScanImported(parsePreview.isScannedPdf)
     setProfileFromCv(true)
+    setAppliedCvFileName(parsePreview.fileName)
+    setUploadExpanded(false)
     setUploadedSamples((current) => (
       current.includes(parsePreview.sampleId) ? current : [...current, parsePreview.sampleId]
     ))
     log(
       'Candidate',
       parsePreview.isScannedPdf ? 'Scanned CV accepted' : 'CV accepted',
-      `${parsePreview.fileName}; profile fields applied after candidate review`,
+      `${parsePreview.fileName}; ${parsePreview.fields.filter((f) => f.status !== 'missing').length} fields applied`,
       'C1',
     )
     setParsePreview(null)
@@ -306,29 +328,47 @@ export function CandidatePortal() {
     handleLocalCvUpload(event.dataTransfer.files)
   }
 
-  async function generateAvatarFollowUp(answer: string, priorTurns = interviewTurns) {
+  function interviewCandidateProfile() {
+    const pick = (key: string) => fields.find((field) => field.key === key)?.value?.trim() ?? ''
+    return {
+      name: pick('name'),
+      experience: pick('experience'),
+      education: pick('educationLevel'),
+      certification: pick('certification'),
+      companyName: pick('companyName'),
+    }
+  }
+
+  async function generateAvatarFollowUp(answer: string, priorTurns = interviewTurns): Promise<FollowUpResult> {
     const candidateTurnCount = priorTurns.filter((turn) => turn.speaker === 'candidate').length
-    const trimmedTurns = priorTurns.slice(-4).map((turn) => ({
+    const trimmedTurns = priorTurns.slice(-8).map((turn) => ({
       speaker: turn.speaker,
       language: turn.language,
       text: turn.text.slice(0, 400),
     }))
     try {
-      const result = await Promise.race([
-        localAi.followUp({
-          answer: answer.slice(0, 1200),
-          priorTurns: trimmedTurns,
-        }),
-        new Promise<never>((_, reject) => {
-          window.setTimeout(() => reject(new Error('LLM follow-up timed out')), 8_000)
-        }),
-      ])
-      log('System', 'LLM follow-up generated', `Mode: ${result.mode}; evidence: ${result.evidencePhrase}`, 'C4')
-      return result.text
+      const result = await localAi.followUp({
+        answer: answer.slice(0, 1200),
+        priorTurns: trimmedTurns,
+        candidateProfile: interviewCandidateProfile(),
+      })
+      log(
+        'System',
+        result.mode === 'model' ? 'LLM follow-up generated' : 'Follow-up template',
+        `${result.mode}; grounded on: ${result.evidencePhrase ?? answer.slice(0, 40)}`,
+        'C4',
+      )
+      return result
     } catch (error) {
+      const message = error instanceof Error ? error.message : 'timeout'
       const fallback = buildInterviewFollowUp(answer, Math.max(0, candidateTurnCount - 1))
-      log('System', 'LLM follow-up fallback', error instanceof Error ? error.message : 'timeout', 'C4')
-      return fallback
+      log('System', 'LLM follow-up fallback', `${message} · using local template`, 'C4')
+      setLlmError(`LLM follow-up unavailable (${message}). Using a local template — check audit log.`)
+      return {
+        mode: 'adapter-fallback',
+        text: fallback,
+        evidencePhrase: answer.trim().split(/\s+/).slice(0, 8).join(' '),
+      }
     }
   }
 
@@ -369,19 +409,23 @@ export function CandidatePortal() {
     }
   }
 
-  async function deliverAvatarFollowUp(followUp: string) {
+  async function deliverAvatarFollowUp(followUp: FollowUpResult) {
     const turn: InterviewTurn = {
       id: nextTurnId('fu'),
       speaker: 'avatar',
       language: 'en',
-      text: followUp,
+      text: followUp.text,
       expression: 'curious',
+      followUpMeta: {
+        mode: followUp.mode === 'model' ? 'model' : 'adapter-fallback',
+        evidencePhrase: followUp.evidencePhrase,
+      },
     }
     const ttsPromise = avatarMode === 'liveavatar'
       ? Promise.resolve(null)
-      : localAi.synthesize({ text: followUp })
+      : localAi.synthesize({ text: followUp.text })
     setInterviewTurns((prev) => [...prev, turn])
-    setAvatarCaption(followUp)
+    setAvatarCaption(followUp.text)
     setAvatarExpression('curious')
     await speakAvatar(turn, { addTurn: false, prefetchedTts: await ttsPromise })
   }
@@ -407,17 +451,40 @@ export function CandidatePortal() {
   function confirmAllFields() {
     setFields((prev) => prev.map((f) => ({
       ...f,
-      status: f.value.trim() ? f.status : 'missing' as const,
+      value: f.status === 'missing' && !f.value.trim() ? '' : f.value,
+      status: f.value.trim() ? (f.status === 'missing' ? 'parsed' as const : f.status) : 'missing' as const,
     })))
-    setFieldsConfirmed(true)
+    setProfileSkills((prev) => ({
+      ...prev,
+      status: prev.items.length ? prev.status : 'missing',
+    }))
+    setProfileLanguages((prev) => ({
+      ...prev,
+      status: prev.items.length ? prev.status : 'missing',
+    }))
     log('Candidate', 'Fields confirmed', 'Parsed values accepted; missing fields left blank', 'C1')
   }
 
   const canSubmitProfile =
     profileFromCv &&
-    uploadedSamples.length > 0 &&
-    fieldsConfirmed &&
+    hasCvUploadEvidence(fields, uploadedSamples, profileWorkHistory) &&
     fields.filter((f) => f.status !== 'missing').every((f) => f.value.trim())
+
+  const submitBlockReason = profileSubmitBlockReason(fields, profileFromCv, uploadedSamples, profileWorkHistory)
+
+  function updateScalarField(key: string, value: string) {
+    setFields((prev) => prev.map((f) => f.key === key
+      ? { ...f, value, status: value.trim() ? (f.status === 'missing' ? 'parsed' : f.status) : 'missing' }
+      : f))
+  }
+
+  function updateTagGroup(setter: Dispatch<SetStateAction<ProfileTagGroup>>, items: string[]) {
+    setter((prev) => ({
+      ...prev,
+      items,
+      status: items.length ? (prev.status === 'missing' ? 'parsed' : prev.status) : 'missing',
+    }))
+  }
 
   const steps = CANDIDATE_STEPS.map((s) => {
     const locked =
@@ -454,6 +521,132 @@ export function CandidatePortal() {
     }, 3000)
   }
 
+  const showCompactUpload = profileFromCv && !uploadExpanded && !uploadBusy
+
+  function renderCvUploadControls() {
+    if (showCompactUpload) {
+      return (
+        <div className="c1-upload-compact">
+          <div className="c1-upload-compact-main">
+            <CheckCircle2 size={18} className="ok" aria-hidden />
+            <div>
+              <strong>CV applied</strong>
+              <span className="muted tiny">{appliedCvFileName || 'Profile loaded from CV'}</span>
+            </div>
+          </div>
+          <button type="button" className="c1-upload-compact-action" onClick={() => setUploadExpanded(true)}>
+            Change CV
+          </button>
+        </div>
+      )
+    }
+
+    return (
+      <>
+        <div className="c1-upload-expanded-head">
+          <div>
+            <h3>Upload CV</h3>
+            {!profileFromCv && (
+              <p className="muted tiny">Drop a PDF/DOCX here or pick a demo sample. Fields appear only after you confirm the extraction.</p>
+            )}
+            {profileFromCv && (
+              <p className="muted tiny">Replace the current CV or try another demo sample.</p>
+            )}
+          </div>
+          {profileFromCv && (
+            <button type="button" className="c1-upload-collapse" onClick={() => setUploadExpanded(false)}>
+              <ChevronUp size={16} aria-hidden /> Hide
+            </button>
+          )}
+        </div>
+
+        <div
+          className={`cv-drop-zone ${dragActive ? 'active' : ''} ${uploadBusy ? 'busy' : ''} ${profileFromCv ? 'cv-drop-zone-compact' : ''}`}
+          onDragEnter={(event) => { event.preventDefault(); setDragActive(true) }}
+          onDragOver={(event) => { event.preventDefault(); setDragActive(true) }}
+          onDragLeave={(event) => {
+            event.preventDefault()
+            if (event.currentTarget.contains(event.relatedTarget as Node)) return
+            setDragActive(false)
+          }}
+          onDrop={handleDrop}
+          onClick={() => !uploadBusy && fileInputRef.current?.click()}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault()
+              if (!uploadBusy) fileInputRef.current?.click()
+            }
+          }}
+          role="button"
+          tabIndex={0}
+        >
+          <FileUp size={profileFromCv ? 22 : 28} aria-hidden />
+          <strong>{dragActive ? 'Drop to upload' : profileFromCv ? 'Drop or browse to replace CV' : 'Drag & drop your CV here'}</strong>
+          <span>PDF, DOC, DOCX</span>
+          <input
+            ref={fileInputRef}
+            type="file"
+            hidden
+            accept=".pdf,.doc,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            disabled={uploadBusy}
+            onChange={(event) => handleLocalCvUpload(event.target.files)}
+          />
+        </div>
+
+        {(uploadBusy || uploadProgress.stage === 'done' || uploadProgress.stage === 'error' || uploadError) && (
+          <div className={`upload-progress ${uploadProgress.stage === 'idle' && uploadError ? 'error' : uploadProgress.stage}`}>
+            <div className="upload-progress-head">
+              <strong>
+                {uploadProgress.stage === 'reading' && 'Reading document'}
+                {uploadProgress.stage === 'uploading' && 'Uploading'}
+                {uploadProgress.stage === 'parsing' && 'AI parsing CV'}
+                {uploadProgress.stage === 'mapping' && 'Preparing review'}
+                {uploadProgress.stage === 'done' && 'Ready to review'}
+                {(uploadProgress.stage === 'error' || uploadError) && 'Upload failed'}
+              </strong>
+              <span>{uploadProgress.progress}%</span>
+            </div>
+            <div className="upload-progress-bar"><span style={{ width: `${uploadProgress.progress}%` }} /></div>
+            <p className="danger-text">{uploadError || uploadProgress.message}</p>
+          </div>
+        )}
+
+        <p className="muted tiny sample-heading">Demo samples</p>
+        <ul className="upload-list">
+          {CV_UPLOAD_SAMPLES.map((sample) => (
+            <li key={sample.id}>
+              <button
+                type="button"
+                disabled={uploadBusy || uploadedSamples.includes(sample.id)}
+                onClick={() => {
+                  void processCvUpload({
+                    sampleId: sample.id,
+                    label: sample.label,
+                    filePath: sample.filePath,
+                    isScannedPdf: sample.id === 'pdf-scan',
+                  })
+                }}
+              >
+                <Upload size={16} /> {uploadedSamples.includes(sample.id) ? 'Applied' : 'Upload'} {sample.label}
+              </button>
+              <button
+                type="button"
+                className="source-file-link"
+                onClick={() => setSourceDoc({
+                  title: sample.label,
+                  url: controlledViewUrl(sample.filePath),
+                })}
+              >
+                Open source
+              </button>
+              {uploadedSamples.includes(sample.id) && <CheckCircle2 size={16} className="ok" />}
+            </li>
+          ))}
+        </ul>
+      </>
+    )
+  }
+
   return (
     <>
       <Layout
@@ -471,96 +664,15 @@ export function CandidatePortal() {
             <section className="stack">
               <header className="section-head">
                 <h1>C1 · Apply & confirm profile</h1>
-                <p>Upload your CV first — AI extracts fields for you to review, then submit to Jadarah (simulated).</p>
+                <p>
+                  {profileFromCv
+                    ? 'Review extracted fields, edit if needed, then submit to Jadarah (simulated).'
+                    : 'Upload your CV first — AI extracts fields for you to review, then submit to Jadarah (simulated).'}
+                </p>
               </header>
-              <div className={`card c1-layout ${profileFromCv ? 'grid-2' : 'c1-upload-only'}`}>
+              <div className={`card c1-layout ${profileFromCv ? 'c1-profile-focused' : 'c1-upload-only'}`}>
                 <div className="c1-upload-column">
-                  <h3>Upload CV</h3>
-                  <p className="muted tiny">Drop a PDF/DOCX here or pick a demo sample. Fields appear only after you confirm the extraction.</p>
-
-                  <div
-                    className={`cv-drop-zone ${dragActive ? 'active' : ''} ${uploadBusy ? 'busy' : ''}`}
-                    onDragEnter={(event) => { event.preventDefault(); setDragActive(true) }}
-                    onDragOver={(event) => { event.preventDefault(); setDragActive(true) }}
-                    onDragLeave={(event) => {
-                      event.preventDefault()
-                      if (event.currentTarget.contains(event.relatedTarget as Node)) return
-                      setDragActive(false)
-                    }}
-                    onDrop={handleDrop}
-                    onClick={() => !uploadBusy && fileInputRef.current?.click()}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter' || event.key === ' ') {
-                        event.preventDefault()
-                        if (!uploadBusy) fileInputRef.current?.click()
-                      }
-                    }}
-                    role="button"
-                    tabIndex={0}
-                  >
-                    <FileUp size={28} aria-hidden />
-                    <strong>{dragActive ? 'Drop to upload' : 'Drag & drop your CV here'}</strong>
-                    <span>or click to browse · PDF, DOC, DOCX</span>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      hidden
-                      accept=".pdf,.doc,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                      disabled={uploadBusy}
-                      onChange={(event) => handleLocalCvUpload(event.target.files)}
-                    />
-                  </div>
-
-                  {(uploadBusy || uploadProgress.stage === 'done' || uploadProgress.stage === 'error' || uploadError) && (
-                    <div className={`upload-progress ${uploadProgress.stage === 'idle' && uploadError ? 'error' : uploadProgress.stage}`}>
-                      <div className="upload-progress-head">
-                        <strong>
-                          {uploadProgress.stage === 'reading' && 'Reading document'}
-                          {uploadProgress.stage === 'uploading' && 'Uploading'}
-                          {uploadProgress.stage === 'parsing' && 'AI parsing CV'}
-                          {uploadProgress.stage === 'mapping' && 'Preparing review'}
-                          {uploadProgress.stage === 'done' && 'Ready to review'}
-                          {(uploadProgress.stage === 'error' || uploadError) && 'Upload failed'}
-                        </strong>
-                        <span>{uploadProgress.progress}%</span>
-                      </div>
-                      <div className="upload-progress-bar"><span style={{ width: `${uploadProgress.progress}%` }} /></div>
-                      <p className="danger-text">{uploadError || uploadProgress.message}</p>
-                    </div>
-                  )}
-
-                  <p className="muted tiny sample-heading">Demo samples</p>
-                  <ul className="upload-list">
-                    {CV_UPLOAD_SAMPLES.map((sample) => (
-                      <li key={sample.id}>
-                        <button
-                          type="button"
-                          disabled={uploadBusy || uploadedSamples.includes(sample.id)}
-                          onClick={() => {
-                            void processCvUpload({
-                              sampleId: sample.id,
-                              label: sample.label,
-                              filePath: sample.filePath,
-                              isScannedPdf: sample.id === 'pdf-scan',
-                            })
-                          }}
-                        >
-                          <Upload size={16} /> {uploadedSamples.includes(sample.id) ? 'Applied' : 'Upload'} {sample.label}
-                        </button>
-                        <button
-                          type="button"
-                          className="source-file-link"
-                          onClick={() => setSourceDoc({
-                            title: sample.label,
-                            url: controlledViewUrl(sample.filePath),
-                          })}
-                        >
-                          Open source
-                        </button>
-                        {uploadedSamples.includes(sample.id) && <CheckCircle2 size={16} className="ok" />}
-                      </li>
-                    ))}
-                  </ul>
+                  {renderCvUploadControls()}
                 </div>
 
                 {profileFromCv && (
@@ -573,24 +685,16 @@ export function CandidatePortal() {
                         <span>Education was extracted with lower confidence — please verify.</span>
                       </div>
                     )}
-                    <div className="field-grid">
-                      {fields.map((field) => (
-                        <label key={field.key} className={`field-row ${field.status}`}>
-                          <div className="field-head">
-                            <strong>{field.label}</strong>
-                            <span className={`pill ${field.status}`}>{statusLabel(field.status)}</span>
-                          </div>
-                          <input
-                            value={field.value}
-                            onChange={(e) => {
-                              setFieldsConfirmed(false)
-                              setFields((prev) => prev.map((f) => f.key === field.key ? { ...f, value: e.target.value, status: e.target.value ? 'parsed' : 'missing' } : f))
-                            }}
-                          />
-                          <button type="button" className="linkish" onClick={() => setEvidenceModal({ title: field.label, evidence: field.evidence, source: field.source })}>Evidence</button>
-                        </label>
-                      ))}
-                    </div>
+                    <CvProfilePanel
+                      fields={fields}
+                      skills={profileSkills}
+                      languages={profileLanguages}
+                      workHistory={profileWorkHistory}
+                      onFieldChange={updateScalarField}
+                      onSkillsChange={(items) => updateTagGroup(setProfileSkills, items)}
+                      onLanguagesChange={(items) => updateTagGroup(setProfileLanguages, items)}
+                      onEvidence={(title, evidence, source) => setEvidenceModal({ title, evidence, source })}
+                    />
                     <div className="actions">
                       <button type="button" onClick={() => { setDraftSaved(true); log('Candidate', 'Draft saved', 'Profile wizard draft', 'C1') }}>Save draft</button>
                       <button type="button" onClick={confirmAllFields}>Confirm all fields</button>
@@ -599,14 +703,15 @@ export function CandidatePortal() {
                         className="primary"
                         disabled={!canSubmitProfile}
                         onClick={() => {
+                          confirmAllFields()
                           setReviewReady(true)
                         }}
                       >
                         Review & submit
                       </button>
                     </div>
-                    {!canSubmitProfile && (
-                      <p className="muted tiny">Click Confirm all fields to accept parsed values, then review. Missing fields stay blank until you fill them manually.</p>
+                    {submitBlockReason && (
+                      <p className="muted tiny">{submitBlockReason}</p>
                     )}
                     {draftSaved && <p className="ok-text">Draft saved.</p>}
                   </div>
@@ -620,14 +725,13 @@ export function CandidatePortal() {
                       <p>Final candidate confirmation before simulated Jadarah profile write-back.</p>
                     </div>
                   </header>
-                  <dl>
-                    {fields.map((field) => (
-                      <div key={field.key}>
-                        <dt>{field.label}</dt>
-                        <dd>{field.value || '—'}</dd>
-                      </div>
-                    ))}
-                  </dl>
+                  <CvProfilePanel
+                    fields={fields}
+                    skills={profileSkills}
+                    languages={profileLanguages}
+                    workHistory={profileWorkHistory}
+                    readOnly
+                  />
                   <div className="actions">
                     <button type="button" onClick={() => setReviewReady(false)}>Back to edit</button>
                     <button type="button" className="primary" onClick={() => {
@@ -816,7 +920,16 @@ export function CandidatePortal() {
                       <div className="transcript">
                         {interviewTurns.map((t) => (
                           <div key={t.id} className={`turn ${t.speaker}`}>
-                            <strong>{t.speaker}</strong><p>{t.text}</p>
+                            <strong>{t.speaker}</strong>
+                            <p>{t.text}</p>
+                            {t.followUpMeta && (
+                              <p className="follow-up-meta muted tiny">
+                                {t.followUpMeta.mode === 'model' ? 'LLM follow-up' : 'Local template (LLM unavailable)'}
+                                {t.followUpMeta.evidencePhrase
+                                  ? ` · grounded on “${t.followUpMeta.evidencePhrase}”`
+                                  : ''}
+                              </p>
+                            )}
                           </div>
                         ))}
                       </div>
@@ -829,7 +942,11 @@ export function CandidatePortal() {
 
                       {interviewPhase === 'english_answer' && (
                         <div className="stack">
-                          <p className="muted tiny">Answer via microphone or typing, then submit when ready.</p>
+                          <p className="muted tiny">
+                            Answer {interviewProgress.currentRound} of {interviewProgress.required}
+                            {interviewProgress.answered > 0 ? ' · AI will ask a contextual follow-up after each reply' : ''}
+                            {' · '}via microphone or typing.
+                          </p>
                           <VoiceAnswerInput
                             key="c4-english-answer"
                             value={candidateAnswerEn}
@@ -853,6 +970,7 @@ export function CandidatePortal() {
                                   setCandidateAnswerEn('')
                                   const followUp = await generateAvatarFollowUp(ans, updatedTurns)
                                   setLlmBusy(false)
+                                  if (followUp.mode === 'model') setLlmError('')
                                   await deliverAvatarFollowUp(followUp)
                                 } catch (error) {
                                   const message = error instanceof Error ? error.message : 'LLM request failed'
@@ -946,7 +1064,10 @@ export function CandidatePortal() {
       {parsePreview && (
         <CvParseConfirmModal
           fileName={parsePreview.fileName}
-          fields={applyParsedFields(emptyProfileFields(), parsePreview.fields)}
+          fields={parsePreview.fields}
+          skills={parsePreview.skills}
+          languages={parsePreview.languages}
+          workHistory={parsePreview.workHistory}
           isScannedPdf={parsePreview.isScannedPdf}
           onConfirm={acceptParsePreview}
           onCancel={cancelParsePreview}

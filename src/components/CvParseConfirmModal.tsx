@@ -1,33 +1,38 @@
-import type { ProfileField } from '../types'
+import type { ProfileField, ProfileTagGroup, WorkExperienceEntry } from '../types'
+import { CvProfilePanel } from './CvProfilePanel'
 
 interface CvParseConfirmModalProps {
   fileName: string
   fields: ProfileField[]
+  skills: ProfileTagGroup
+  languages: ProfileTagGroup
+  workHistory: WorkExperienceEntry[]
   isScannedPdf: boolean
   onConfirm: () => void
   onCancel: () => void
 }
 
-function statusLabel(status: ProfileField['status']) {
-  if (status === 'parsed') return 'Parsed'
-  if (status === 'review') return 'Needs review'
-  return 'Missing'
-}
-
 export function CvParseConfirmModal({
   fileName,
   fields,
+  skills,
+  languages,
+  workHistory,
   isScannedPdf,
   onConfirm,
   onCancel,
 }: CvParseConfirmModalProps) {
+  const parsedCount = fields.filter((f) => f.status !== 'missing').length
+
   return (
     <div className="modal-backdrop" onClick={onCancel}>
-      <div className="modal cv-parse-modal" onClick={(e) => e.stopPropagation()}>
+      <div className="modal cv-parse-modal cv-parse-modal-wide" onClick={(e) => e.stopPropagation()}>
         <header>
           <div>
             <h3>Review extracted profile</h3>
-            <p className="muted tiny">AI read <strong>{fileName}</strong> — confirm before filling your profile.</p>
+            <p className="muted tiny">
+              AI read <strong>{fileName}</strong> — {parsedCount} scalar fields + experience blocks extracted.
+            </p>
           </div>
           <button type="button" onClick={onCancel}>Cancel</button>
         </header>
@@ -38,16 +43,13 @@ export function CvParseConfirmModal({
           </div>
         )}
         <section className="cv-parse-preview">
-          {fields.map((field) => (
-            <div key={field.key} className={`cv-parse-row ${field.status}`}>
-              <div className="field-head">
-                <strong>{field.label}</strong>
-                <span className={`pill ${field.status}`}>{statusLabel(field.status)}</span>
-              </div>
-              <p>{field.value.trim() || '— not found in document —'}</p>
-              {field.evidence && <small className="muted">{field.evidence}</small>}
-            </div>
-          ))}
+          <CvProfilePanel
+            fields={fields}
+            skills={skills}
+            languages={languages}
+            workHistory={workHistory}
+            readOnly
+          />
         </section>
         <footer className="modal-actions">
           <button type="button" onClick={onCancel}>Upload a different file</button>

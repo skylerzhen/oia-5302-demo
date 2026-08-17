@@ -1,0 +1,33 @@
+{
+  "fields": [
+    { "key": "name", "value": "Khalid Al-Balushi", "status": "parsed", "evidence": "Khalid Al-Balushi", "source": "DOCX header" },
+    { "key": "email", "value": "k.albalushi@example.om", "status": "parsed", "evidence": "k.albalushi@example.om", "source": "Contact line" },
+    { "key": "phone", "value": "", "status": "missing", "evidence": "", "source": "Not found in source document" },
+    { "key": "nationality", "value": "", "status": "missing", "evidence": "", "source": "Not found in source document" },
+    { "key": "address", "value": "", "status": "missing", "evidence": "", "source": "Not found in source document" },
+    { "key": "experience", "value": "5", "status": "parsed", "evidence": "five years in financial reporting", "source": "Experience summary" },
+    { "key": "educationLevel", "value": "BSc", "status": "parsed", "evidence": "BSc Accounting", "source": "Education section" },
+    { "key": "university", "value": "", "status": "missing", "evidence": "", "source": "Not found in source document" },
+    { "key": "gpa", "value": "", "status": "missing", "evidence": "", "source": "Not found in source document" },
+    { "key": "graduationDate", "value": "", "status": "missing", "evidence": "", "source": "Not found in source document" },
+    { "key": "specialization", "value": "Accounting", "status": "parsed", "evidence": "BSc Accounting", "source": "Education section" },
+    { "key": "companyName", "value": "", "status": "missing", "evidence": "", "source": "Not found in source document" },
+    { "key": "positionTitle", "value": "", "status": "missing", "evidence": "", "source": "Not found in source document" },
+    { "key": "industry", "value": "", "status": "missing", "evidence": "", "source": "Not found in source document" },
+    { "key": "location", "value": "", "status": "missing", "evidence": "", "source": "Not found in source document" },
+    { "key": "certification", "value": "", "status": "missing", "evidence": "", "source": "Not found in source document" }
+  ],
+  "skills": {
+    "items": ["Financial reporting", "Excel", "English"],
+    "status": "parsed",
+    "evidence": "Financial reporting, Excel, English",
+    "source": "Skills section"
+  },
+  "languages": {
+    "items": ["English"],
+    "status": "parsed",
+    "evidence": "English",
+    "source": "Skills section"
+  },
+  "workHistory": []
+}

@@ -7,6 +7,7 @@
  *   node scripts/verify-heygen.mjs --speak   # full lip-sync round-trip (slow)
  */
 import { loadEnv } from '../server/load-env.mjs'
+import { authHeaders } from '../server/api-auth.mjs'
 import { getHeyGenLook, getHeyGenWallet, handleHeyGenStatus, handleHeyGenSpeak, probeHeyGenRealtimeTts } from '../server/heygen-handlers.mjs'
 import { handleSynthesize } from '../server/speech-handlers.mjs'
 
@@ -16,6 +17,7 @@ const speakTest = process.argv.includes('--speak')
 const probeTest = process.argv.includes('--probe')
 
 async function verifyRemote(baseUrl) {
+  loadEnv()
   const root = baseUrl.replace(/\/$/, '')
   const statusRes = await fetch(`${root}/api/heygen/status`)
   const status = await statusRes.json()
@@ -23,7 +25,7 @@ async function verifyRemote(baseUrl) {
   if (speakTest) {
     const speakRes = await fetch(`${root}/api/heygen/speak`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ text: 'HeyGen verification line for OIA demo.' }),
     })
     speak = await speakRes.json()

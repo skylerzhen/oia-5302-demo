@@ -1,6 +1,6 @@
 # Cursor 对话索引（自动生成）
 
-> 生成时间：2026年8月17日星期一 13:40:34
+> 生成时间：2026年8月18日星期二 00:21:36
 > 来源：`.cursor/projects/Users-admin-Downloads-oia-5302-demo/agent-transcripts/cfdf73c4-11d0-4c96-bce3-879ff2d3583a/cfdf73c4-11d0-4c96-bce3-879ff2d3583a.jsonl`, `.cursor/projects/Users-admin-Downloads-oia-5302-demo/agent-transcripts/8d7eed28-beb9-4521-be5e-f90f42af4df4/8d7eed28-beb9-4521-be5e-f90f42af4df4.jsonl`
 
 收工时 Agent 会据此写 **决策摘要** 进 `docs/daily-logs/`。原始 jsonl 不在 Git 里。
@@ -387,6 +387,75 @@
 82. **13:22** — 这样吧，你全部重做吧就是这个部分，越改越烂
 83. **13:27** — 项目：OIA 5302 招聘助手 demo（React 单页原型）。本轮只做候选人门户 C1「CV 解析与档案确认」界面的补强与一个数据一致性修复，不碰解析逻辑、不碰其他页面。 【A. 解析字段扩充（自解析指令——先查数据，再决定做不做）】 1. 先检查 CV 解析结果的数据结构：LLM 解析返回的 JSON 里实际包含哪些字段（重点看 skills / languages / work expe…
 84. **13:39** — 直接surge
+85. **13:40** — 把项目push到我的git仓库里，做好版本管理以及markdown文件
+86. **13:44** — 总结我们现在的技术接入有哪些
+87. **13:44** — 总结我们现在的技术接入有哪些
+88. **13:45** — liveavatar和heygen什么关系一句话告诉我
+89. **13:46** — 那为什么我现在这个事liveavatar上面的数字人
+90. **13:47** — liveavatar做口型的为什么也有数字人形象
+91. **13:52** — 你看看现在有没有什么严重bug在烧我们的OpenAI余额，千万不要出现昨天那个情况了
+92. **13:54** — 保护好api，开始做
+93. **14:02** — 刚才那份提示词你改完我去页面看解析出来的项还是就那几个啊，而且我都填了还不让我提交
+94. **17:29** — 项目：OIA 5302 招聘助手 demo（React 单页原型）。本轮只做一件事：让 CV 解析后的档案展示足够丰富——解析出多少、结构化展示多少。不修改任何 CV 源文件内容，不碰其他页面。 【A. 解析字段扩展】 1. 检查当前 LLM 解析 prompt 实际抽取哪些字段。若未抽取下列字段，对解析 prompt 做最小修改，使解析输出包含： - 基础：Name · Email · Phon…
+95. **17:40** — deploy surge
+96. **17:43** — missing太多了，你看看是不是得改改cv数据包
+97. **17:43** — missing太多了，你看看是不是得改改cv数据包
+98. **17:45** — 不用问我，你直接deploy surge就行
+99. **17:49** — 提交过一份cv之后我觉得从使用体验角度来说，upload的交互按键不应该再占用太多视觉空间
+100. **17:54** — 为什么liveavatar掉了
+101. **18:01** — 效果不错，面试互动能多几轮吗，现场一轮看不出追问的效果
+102. **18:09** — 为什么感觉不到追问，llm真的在生效吗，根本不根据我的回答来提问啊我感觉
+103. **18:14** — 帮我打开数据包文件夹
+104. **21:40** — 打开zip
+105. **21:45** — 我认为hr界面的使用逻辑不太清晰，应该是从第一个候选人信息进去能看到对应候选人的后续流程，最后终审的时候也没有把评分总览很清楚的写出来，有点过于简单，你改一下这一点
+106. **21:45** — 我认为hr界面的使用逻辑不太清晰，应该是从第一个候选人信息进去能看到对应候选人的后续流程，最后终审的时候也没有把评分总览很清楚的写出来，有点过于简单，你改一下这一点
+107. **21:52** — Briefly inform the user about the task result and perform any follow-up actions (if needed).
+108. **21:57** — 我觉得hr界面每个流程之间衔接有些缺乏逻辑
+109. **22:00** — 有什么方法让hr界面的interview回放也显示我们的liveavatar现在是2d，但是不能一直烧我们的额度，实在不行就算了，千万不要因为这个弄出其他bug
+110. **22:16** — 你可以弄一张我们avatar的静态图或者gif替换这个2d形象，这样也不算session不消耗我们额度
+111. **22:19** — Briefly inform the user about the task result and perform any follow-up actions (if needed).
+112. **22:20** — 这步做的不太好，你退回吧
+113. **22:23** — 部署
+114. **22:34** — 需要你确认下境外能否访问，就是阿曼那边能打开我的网页吗，所有功能都必须让他们能用上
+115. **22:36** — 如果改域名能访问吗
+116. **22:44** — https://oia-recruitment.coolai.tech配成公司自己的域名了，你surge一下
+117. **22:47** — Briefly inform the user about the task result and perform any follow-up actions (if needed).
+118. **22:47** — Briefly inform the user about the task result and perform any follow-up actions (if needed).
+119. **22:50** — 怎么给我虚拟数字人弄没了
+120. **22:53** — 为什么还是2d，c4页面
+121. **22:53** — 备用地址是对的，用了cool ai后缀这个就是没有avatar
+122. **22:55** — 怎么看dns有没有完全生效
+123. **22:59** — Briefly inform the user about the task result and perform any follow-up actions (if needed).
+124. **23:01** — 无语！！！还是不行，为什么两个地址进去的版本不一样，公司域名这个进去是旧版本
+125. **23:04** — Briefly inform the user about the task result and perform any follow-up actions (if needed).
+126. **23:06** — 这样吧，还是老样子。你想办法把我 https://oia-rfq-5302.surge.sh这个部署成新域名，行不行，他那个一直是我昨天晚上没有虚拟数字人的版本
+127. **23:09** — Briefly inform the user about the task result and perform any follow-up actions (if needed).
+128. **23:12** — 你把我以前的东西也搞没了？？？？全是没数字人版本的
+129. **23:13** — 我求你退回去吧，你把我原来域名的内容也搞没了
+130. **23:14** — 两台电脑都看不到大哥，什么情况到底
+131. **23:16** — avatar是之前那个2d的啊，到底在干嘛，为什么一个域名把我东西全弄没了？？
+132. **23:19** — Briefly inform the user about the task result and perform any follow-up actions (if needed).
+133. **23:20** — 我的liveavatar还是没有啊，到底什么情况！！！
+134. **23:26** — Briefly inform the user about the task result and perform any follow-up actions (if needed).
+135. **23:28** — 为什么我的数字人变卡了，没有之前流畅，先分析原因别瞎改
+136. **23:31** — 不是，render我是7刀而且一直没变过，为什么现在就这么卡，就是部署完dns之后，感觉帧率很低
+137. **23:32** — 两个都卡
+138. **23:35** — 编辑一个信息，就是英文的发给老外的，内容是主地址和备用地址
+139. **23:36** — Hi Team —here is the demo, Link: [URL] What's live and real: CV parsing (upload any CV — ours or your own), AI-generated interview questions with follow-ups that respond to what the candidate actually…
+140. **23:39** — 就是感觉很不流畅，刚部署的时候视频很流畅，现在就是卡卡的
+141. **23:41** — 刚才sonnet太弱智了，你来解决我的问题
+142. **23:49** — 你给我搞乱掉了，语音变了然后liveavatar加载不出来，你重新部署吧或者退回改动前的
+143. **23:55** — 出现电音了直接，到底是什么情况啊
+144. **23:58** — 可以了，
+
+## 2026-08-18
+
+1. **00:01** — 我问你点问题，你别动任何代码。为什么我今天刚部署好的时候特别流畅，现在就是稍微有点掉帧的感觉
+2. **00:05** — 那怎么能回到一开始那种很高的帧率
+3. **00:05** — 那怎么能回到一开始那种很高的帧率
+4. **00:12** — 帮我把我们这个项目需要的几个网页地址都给我，刚才不小心把safari关掉了
+5. **00:14** — 为什么我的render进去environment全没了
+6. **00:21** — 今天的工作结束，push
 
 ## unknown-date
 
@@ -406,7 +475,7 @@
 14. **??:??** — Perform any necessary follow-up actions in response to the subagent completion above. If no follow-up work is needed, no further action is required. If you mention an agent or subagent in your respons…
 15. **??:??** — Perform any necessary follow-up actions in response to the subagent completion above. If no follow-up work is needed, no further action is required. If you mention an agent or subagent in your respons…
 16. **??:??** — Perform any necessary follow-up actions in response to the subagent completion above. If no follow-up work is needed, no further action is required. If you mention an agent or subagent in your respons…
-17. **??:??** — <mcp_meta_tools> You have access to MCP (Model Context Protocol) tools through `GetMcpTools` and `CallMcpTool`. ## MCP Tool Discovery and Invocation Use `GetMcpTools` to discover tool schemas, then `C…
-18. **??:??** — Perform any necessary follow-up actions in response to the subagent completion above. If no follow-up work is needed, no further action is required. If you mention an agent or subagent in your respons…
+17. **??:??** — Perform any necessary follow-up actions in response to the subagent completion above. If no follow-up work is needed, no further action is required. If you mention an agent or subagent in your respons…
+18. **??:??** — <mcp_server_catalog> These were the available MCP servers and tools when this conversation started. Tool availability may have changed since then, so use `GetMcpTools` to check current state before ca…
 19. **??:??** — Briefly inform the user about the task result and perform any follow-up actions (if needed). If there's no follow-ups needed, don't explicitly say that.
 20. **??:??** — Briefly inform the user about the task result and perform any follow-up actions (if needed). If there's no follow-ups needed, don't explicitly say that.

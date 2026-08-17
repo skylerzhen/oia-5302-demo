@@ -1,5 +1,6 @@
 import { Room, RoomEvent, Track } from 'livekit-client'
 import { localAi } from './localAi'
+import { withApiAuthBody } from './apiAuth'
 
 export interface LiveAvatarCredentials {
   sessionId: string
@@ -128,10 +129,12 @@ async function connectRoom(credentials: LiveAvatarCredentials): Promise<boolean>
 function beaconStopSession(sessionId: string) {
   if (!API_BASE || !sessionId) return
   try {
-    navigator.sendBeacon(
-      `${API_BASE}/api/liveavatar/session/stop`,
-      new Blob([JSON.stringify({ sessionId })], { type: 'application/json' }),
-    )
+    void fetch(`${API_BASE}/api/liveavatar/session/stop`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(withApiAuthBody({ sessionId })),
+      keepalive: true,
+    })
   } catch {
     // ignore
   }
@@ -153,12 +156,6 @@ export function installLiveAvatarLifecycleGuards() {
     session = null
     room = null
     connectPromise = null
-  })
-
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden' && session?.sessionId) {
-      void stopLiveAvatarSession()
-    }
   })
 }
 

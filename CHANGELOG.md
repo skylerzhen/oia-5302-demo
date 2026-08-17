@@ -6,8 +6,20 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Versioning foll
 ## [Unreleased]
 
 ### Added
+- HR portal: candidate journey modal, current-candidate card on H2–H4, score summary on final decision
+- Custom Surge domain support in `deploy-surge-cloud.mjs` (second CLI arg)
+- API body auth (`apiKey`) for Surge→Render CORS compatibility
+- CV parse normalize server module + enriched Sara v1 demo data
+- C4 multi-round LLM follow-up with grounding metadata in transcript
 - End-of-day automation: say 「收工」→ Agent writes `docs/daily-logs/*.md`, commits, pushes
 - `.cursor/rules/daily-log-workflow.mdc`, `scripts/end-of-day.sh`
+
+### Fixed
+- Surge builds missing `VITE_LLM_API_URL` when env var commented in `llm.env`
+- C1 compact upload UI after CV applied; missing-field parse path via server markdown
+
+### Changed
+- Live demo primary URL: https://oia-recruitment.coolai.tech (backup: oia-rfq-5302.surge.sh)
 
 ## [0.2.0] - 2026-08-17
 

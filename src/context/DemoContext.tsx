@@ -7,7 +7,9 @@ import type {
   InterviewTurn,
   PipelineStatus,
   ProfileField,
+  ProfileTagGroup,
   UserRole,
+  WorkExperienceEntry,
 } from '../types'
 
 export interface DemoContextValue {
@@ -27,6 +29,12 @@ export interface DemoContextValue {
   setPipeline: (patch: Partial<PipelineStatus>) => void
   fields: ProfileField[]
   setFields: React.Dispatch<React.SetStateAction<ProfileField[]>>
+  profileSkills: ProfileTagGroup
+  setProfileSkills: React.Dispatch<React.SetStateAction<ProfileTagGroup>>
+  profileLanguages: ProfileTagGroup
+  setProfileLanguages: React.Dispatch<React.SetStateAction<ProfileTagGroup>>
+  profileWorkHistory: WorkExperienceEntry[]
+  setProfileWorkHistory: React.Dispatch<React.SetStateAction<WorkExperienceEntry[]>>
   interviewTurns: InterviewTurn[]
   setInterviewTurns: React.Dispatch<React.SetStateAction<InterviewTurn[]>>
   assessmentScore: number

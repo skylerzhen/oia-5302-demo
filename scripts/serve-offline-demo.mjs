@@ -3,7 +3,7 @@
  * Serve the built demo from localhost only. No development server, cloud URL,
  * or external network dependency is required once npm dependencies are present.
  */
-import { createReadStream, existsSync } from 'node:fs'
+import { createReadStream, existsSync, readFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -38,34 +38,15 @@ function quotedPhrase(answer) {
   return normalized.split(/[,.؛،]/)[0]?.slice(0, 72) || 'your previous response'
 }
 
-const CV_PARSE_PROFILES = {
-  'pdf-en': [
-    { key: 'name', value: 'Sara Al-Hinai', status: 'parsed', source: 'Electronic PDF, page 1 header' },
-    { key: 'email', value: 'sara.alhinai@example.om', status: 'parsed', source: 'Contact block, page 1' },
-    { key: 'experience', value: '7', status: 'parsed', source: 'Experience section, page 1' },
-    { key: 'education', value: 'MSc Finance, Sultan Qaboos University', status: 'parsed', source: 'Education section, page 1', confidence: 0.98 },
-    { key: 'certification', value: '', status: 'missing', source: 'No certification found in source document' },
-  ],
-  'docx-en': [
-    { key: 'name', value: 'Sara Al-Hinai', status: 'parsed', source: 'DOCX body, paragraph 1' },
-    { key: 'email', value: 'sara.alhinai@example.om', status: 'parsed', source: 'DOCX contact line' },
-    { key: 'experience', value: '7', status: 'parsed', source: 'DOCX experience block' },
-    { key: 'education', value: 'MSc Finance, Sultan Qaboos University', status: 'parsed', source: 'DOCX education block', confidence: 0.96 },
-    { key: 'certification', value: '', status: 'missing', source: 'No certification found in source document' },
-  ],
-  'pdf-ar-scan': [
-    { key: 'name', value: 'Sara Al-Hinai', status: 'parsed', source: 'Scanned PDF, page 1 (OCR)' },
-    { key: 'email', value: 'sara.alhinai@example.om', status: 'parsed', source: 'Scanned PDF, page 1 (OCR)' },
-    { key: 'experience', value: '7', status: 'parsed', source: 'Scanned PDF, page 1 (OCR)' },
-    { key: 'education', value: 'MSc Finance, Sultan Qaboos University', status: 'review', source: 'Arabic scanned PDF, page 1', confidence: 0.82 },
-    { key: 'certification', value: '', status: 'missing', source: 'Not found in scanned document' },
-  ],
+function loadCvFallback(sampleId) {
+  const filePath = path.join(ROOT, 'data/cv-parse-fallback', `${sampleId}.json`)
+  return JSON.parse(readFileSync(filePath, 'utf8'))
 }
 
 function resolveSampleId(fileName, isArabicScan) {
-  if (isArabicScan) return 'pdf-ar-scan'
+  if (isArabicScan) return 'pdf-scan'
   const normalized = String(fileName).toLowerCase()
-  if (normalized.includes('noor') || normalized.includes('ar-scan') || normalized.includes('scan')) return 'pdf-ar-scan'
+  if (normalized.includes('noor') || normalized.includes('ar-scan') || normalized.includes('scan')) return 'pdf-scan'
   if (normalized.endsWith('.docx')) return 'docx-en'
   return 'pdf-en'
 }
@@ -88,12 +69,15 @@ async function handleLocalAi(request, response, pathname) {
     const isArabicScan = Boolean(payload.isArabicScan)
     const sampleId = payload.sampleId || resolveSampleId(payload.fileName, isArabicScan)
     await wait(isArabicScan ? 900 : 650)
+    const parsed = ['pdf-en', 'docx-en', 'pdf-scan'].includes(sampleId)
+      ? loadCvFallback(sampleId)
+      : loadCvFallback('pdf-en')
     return writeJson(response, 200, {
       mode: 'adapter-fallback',
       sampleId,
       fileName: payload.fileName,
       fileSize: payload.fileSize ?? null,
-      fields: CV_PARSE_PROFILES[sampleId] ?? CV_PARSE_PROFILES['pdf-en'],
+      ...parsed,
     })
   }
 

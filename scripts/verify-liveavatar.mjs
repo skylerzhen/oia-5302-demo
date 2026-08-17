@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { loadEnv } from '../server/load-env.mjs'
+import { authHeaders } from '../server/api-auth.mjs'
 import { liveAvatarConfigured, handleLiveAvatarSessionStart, handleLiveAvatarSessionStop } from '../server/liveavatar-handlers.mjs'
 import { synthesizeOpenAiTtsPcm } from '../server/openai-tts.mjs'
 import { speakLiveAvatarSession } from '../server/liveavatar-session.mjs'
@@ -18,9 +19,11 @@ async function verifyRemote() {
     throw new Error('LiveAvatar not configured on remote API')
   }
 
+  const headers = authHeaders({ 'Content-Type': 'application/json' })
+
   const startRes = await fetch(`${baseUrl.replace(/\/$/, '')}/api/liveavatar/session/start`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: '{}',
   })
   const started = await startRes.json()
@@ -29,7 +32,7 @@ async function verifyRemote() {
 
   const speakRes = await fetch(`${baseUrl.replace(/\/$/, '')}/api/liveavatar/speak`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify({
       sessionId: started.sessionId,
       text: 'LiveAvatar verification line for OIA demo.',
@@ -41,7 +44,7 @@ async function verifyRemote() {
 
   await fetch(`${baseUrl.replace(/\/$/, '')}/api/liveavatar/session/stop`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify({ sessionId: started.sessionId }),
   })
 }

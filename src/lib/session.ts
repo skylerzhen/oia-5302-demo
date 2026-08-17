@@ -1,4 +1,4 @@
-import { emptyProfileFields } from '../data/candidates'
+import { emptyProfileFields, emptyProfileTagGroup, mergeProfileFields } from '../data/cvProfileSchema'
 import type {
   AuditEntry,
   CandidateStepId,
@@ -7,7 +7,9 @@ import type {
   InterviewTurn,
   PipelineStatus,
   ProfileField,
+  ProfileTagGroup,
   UserRole,
+  WorkExperienceEntry,
 } from '../types'
 
 const STORAGE_KEY = 'oia-5302-demo-session'
@@ -21,6 +23,9 @@ export interface DemoSession {
   auditLog: AuditEntry[]
   integrationSyncs: IntegrationSyncEvent[]
   fields: ProfileField[]
+  profileSkills: ProfileTagGroup
+  profileLanguages: ProfileTagGroup
+  profileWorkHistory: WorkExperienceEntry[]
   interviewTurns: InterviewTurn[]
   assessmentScore: number
   shortlistedReason: string
@@ -49,6 +54,9 @@ export function defaultSession(): DemoSession {
     auditLog: [],
     integrationSyncs: [],
     fields: emptyProfileFields(),
+    profileSkills: emptyProfileTagGroup(),
+    profileLanguages: emptyProfileTagGroup(),
+    profileWorkHistory: [],
     interviewTurns: [],
     assessmentScore: 0,
     shortlistedReason: '',
@@ -70,6 +78,10 @@ export function loadSession(): DemoSession {
       offline: false,
       pipeline: { ...defaultPipeline, ...(parsed.pipeline ?? {}) },
       integrationSyncs: parsed.integrationSyncs ?? [],
+      fields: mergeProfileFields(Array.isArray(parsed.fields) ? parsed.fields : []),
+      profileSkills: parsed.profileSkills ?? emptyProfileTagGroup(),
+      profileLanguages: parsed.profileLanguages ?? emptyProfileTagGroup(),
+      profileWorkHistory: Array.isArray(parsed.profileWorkHistory) ? parsed.profileWorkHistory : [],
     }
   } catch {
     return defaultSession()

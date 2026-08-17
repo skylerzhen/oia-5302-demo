@@ -140,12 +140,17 @@ export function getMatchById(id: string): CandidateMatch | undefined {
   return rankCandidates().find((m) => m.candidateId === id)
 }
 
+/** Minimum candidate answers before the submit / closing step unlocks. */
+export const INTERVIEW_MIN_CANDIDATE_ANSWERS = 3
+
 export function buildInterviewFollowUp(answer: string, round = 0): string {
-  const snippet = answer.trim().slice(0, 60) || 'your previous response'
+  const hook = answer.trim().replace(/\s+/g, ' ')
+  const snippet = hook.split(/[.!?]/)[0]?.trim().slice(0, 72) || hook.slice(0, 72) || 'your previous response'
   const templates = [
-    `You mentioned "${snippet}". How did you quantify the risk impact in that situation?`,
-    `Thanks. Which KPIs or thresholds did you use to validate "${snippet}"?`,
-    `Understood. Who were the key stakeholders you presented "${snippet.slice(0, 40)}..." to, and what was the outcome?`,
+    `You mentioned "${snippet}" — how did you quantify the risk impact in that situation?`,
+    `On "${snippet}", which KPIs or thresholds did you use before recommending action?`,
+    `Who were the key stakeholders for "${snippet.slice(0, 48)}", and what was the outcome?`,
+    `If conditions worsened after "${snippet.slice(0, 42)}", what would you change in your approach?`,
   ]
   return templates[Math.min(round, templates.length - 1)]
 }
@@ -166,8 +171,25 @@ export function getInterviewUiPhase(
   const avatarTurns = turns.filter((t) => t.speaker === 'avatar')
 
   if (candidateTurns.length === 0) return 'english_answer'
-  if (avatarTurns.length >= 2 && candidateTurns.length >= 1) return 'ready_to_finish'
+
+  const minAnswers = INTERVIEW_MIN_CANDIDATE_ANSWERS
+  if (
+    candidateTurns.length >= minAnswers &&
+    avatarTurns.length >= candidateTurns.length + 1
+  ) {
+    return 'ready_to_finish'
+  }
+
   return 'english_answer'
+}
+
+export function interviewAnswerProgress(turns: { speaker: string }[]) {
+  const answered = turns.filter((t) => t.speaker === 'candidate').length
+  return {
+    answered,
+    required: INTERVIEW_MIN_CANDIDATE_ANSWERS,
+    currentRound: Math.min(answered + 1, INTERVIEW_MIN_CANDIDATE_ANSWERS),
+  }
 }
 
 export function buildImprovementTips(match: CandidateMatch): string[] {

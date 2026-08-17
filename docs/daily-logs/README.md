@@ -56,3 +56,4 @@ docs/daily-logs/2026-08-15.md
 | [2026-08-14](./2026-08-14.md) | CV 上传修复、Surge 部署、PDF/HTML 资料链接 |
 | [2026-08-15](./2026-08-15.md) | Landing 修复、GitHub 仓库与同步体系 |
 | [2026-08-17](./2026-08-17.md) | LiveAvatar C4 重写、C1 certification 修复、v0.2.0 发布 |
+| [2026-08-18](./2026-08-18.md) | HR 门户增强、coolai 域名部署、LiveAvatar 部署/回退 stabilisation |

@@ -17,6 +17,32 @@ export interface ProfileField {
   source: string
 }
 
+export interface ProfileTagGroup {
+  items: string[]
+  status: FieldStatus
+  evidence: string
+  source: string
+}
+
+export interface WorkExperienceEntry {
+  id: string
+  company: string
+  title: string
+  start: string
+  end: string
+  responsibilities: string[]
+  status: FieldStatus
+  evidence: string
+  source: string
+}
+
+export interface CvParsePayload {
+  fields: ProfileField[]
+  skills: ProfileTagGroup
+  languages: ProfileTagGroup
+  workHistory: WorkExperienceEntry[]
+}
+
 export interface CandidateProfile {
   id: string
   name: string
@@ -65,6 +91,11 @@ export interface InterviewTurn {
   language: 'en'
   text: string
   expression?: 'neutral' | 'supportive' | 'curious' | 'gesture'
+  /** Set on avatar follow-up turns so reviewers can see LLM grounding. */
+  followUpMeta?: {
+    mode: 'model' | 'adapter-fallback'
+    evidencePhrase?: string
+  }
 }
 
 export interface AuditEntry {

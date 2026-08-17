@@ -1,5 +1,5 @@
-import { resolveSampleProfileId, getCvParseProfile, type CvParseFieldResult } from '../data/cvParseProfiles'
-import { cvSourceTextForSample } from '../data/cvSourceText'
+import type { CvParsePayload } from '../types'
+import { applyCvParsePayload, getCvParseProfile } from '../data/cvParseProfiles'
 import { localAi, type CvParseResult } from './localAi'
 
 export type CvUploadStage = 'idle' | 'reading' | 'uploading' | 'parsing' | 'mapping' | 'done' | 'error'
@@ -18,13 +18,12 @@ export interface CvUploadInput {
   isScannedPdf?: boolean
 }
 
-export interface CvUploadResult {
+export interface CvUploadResult extends CvParsePayload {
   sampleId: string
   fileName: string
   fileSize: number
   fileType: string
   mode: CvParseResult['mode']
-  fields: CvParseFieldResult[]
   isScannedPdf: boolean
 }
 
@@ -89,11 +88,16 @@ async function parseWithAdapter(input: {
   documentText?: string
 }): Promise<CvParseResult> {
   const profile = getCvParseProfile(input.sampleId)
-  const documentText = input.documentText ?? cvSourceTextForSample(input.sampleId)
   const apiBase = import.meta.env.VITE_LLM_API_URL?.trim()
 
   if (!apiBase && profile) {
-    return { mode: 'adapter-fallback', fields: profile.fields }
+    return {
+      mode: 'adapter-fallback',
+      fields: profile.fields,
+      skills: profile.skills,
+      languages: profile.languages,
+      workHistory: profile.workHistory,
+    }
   }
 
   try {
@@ -103,11 +107,16 @@ async function parseWithAdapter(input: {
       fileSize: input.fileSize,
       fileType: input.fileType,
       isScannedPdf: input.isScannedPdf,
-      documentText,
     })
   } catch (error) {
     if (profile) {
-      return { mode: 'adapter-fallback', fields: profile.fields }
+      return {
+        mode: 'adapter-fallback',
+        fields: profile.fields,
+        skills: profile.skills,
+        languages: profile.languages,
+        workHistory: profile.workHistory,
+      }
     }
     throw error
   }
@@ -145,7 +154,6 @@ export async function runCvUploadFlow(
       fileSize: loaded.fileSize,
       fileType: loaded.fileType,
       isScannedPdf,
-      documentText: cvSourceTextForSample(sampleId),
     })
 
     await wait(isScannedPdf ? 900 : 650)
@@ -153,10 +161,10 @@ export async function runCvUploadFlow(
     onProgress({ stage: 'mapping', progress: 90, message: 'Mapping extracted fields to profile…' })
     await wait(350)
 
-    if (parsed.fields.length === 0) {
+    const payload = applyCvParsePayload(sampleId, input.fileName, parsed)
+    if (payload.fields.length === 0) {
       throw new Error('LLM returned no parsed CV fields')
     }
-    const fields = parsed.fields
 
     onProgress({ stage: 'done', progress: 100, message: 'Upload and parse complete' })
 
@@ -166,8 +174,8 @@ export async function runCvUploadFlow(
       fileSize: loaded.fileSize,
       fileType: loaded.fileType,
       mode: parsed.mode,
-      fields,
       isScannedPdf,
+      ...payload,
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Upload failed'
@@ -176,20 +184,10 @@ export async function runCvUploadFlow(
   }
 }
 
-export function applyParsedFields<T extends { key: string; value: string; status: string; evidence: string; source: string }>(
-  current: T[],
-  parsed: CvParseFieldResult[],
-): T[] {
-  return current.map((field) => {
-    const update = parsed.find((entry) => entry.key === field.key)
-    if (!update) return field
-    const confidence = update.confidence ? ` (OCR confidence ${update.confidence.toFixed(2)})` : ''
-    return {
-      ...field,
-      value: update.value ?? field.value,
-      status: update.status,
-      evidence: update.evidence ?? field.evidence,
-      source: `${update.source}${confidence}`,
-    }
-  })
+function resolveSampleProfileId(fileName: string) {
+  const normalized = fileName.toLowerCase()
+  if (normalized.includes('noor') || normalized.includes('scan')) return 'pdf-scan'
+  if (normalized.endsWith('.docx')) return 'docx-en'
+  if (normalized.includes('sara') || normalized.endsWith('.pdf')) return 'pdf-en'
+  return null
 }

@@ -1,56 +1,66 @@
-export interface CvParseProfile {
-  label: string
-  fileName: string
-  isScannedPdf: boolean
-  fields: CvParseFieldResult[]
-}
+import type { CvParsePayload, FieldStatus, ProfileField, ProfileTagGroup, WorkExperienceEntry } from '../types'
+import pdfEn from '../../data/cv-parse-fallback/pdf-en.json'
+import docxEn from '../../data/cv-parse-fallback/docx-en.json'
+import pdfScan from '../../data/cv-parse-fallback/pdf-scan.json'
+import {
+  emptyProfileFields,
+  emptyProfileTagGroup,
+  guardV1Certification,
+  workHistoryWithIds,
+} from './cvProfileSchema'
 
 export interface CvParseFieldResult {
   key: string
   value?: string
-  status: import('../types').FieldStatus
+  status: FieldStatus
   evidence?: string
   source: string
   confidence?: number
 }
 
-export const CV_PARSE_PROFILES: Record<string, CvParseProfile> = {
-  'pdf-en': {
+export interface CvParseProfileData extends CvParsePayload {
+  label: string
+  fileName: string
+  isScannedPdf: boolean
+}
+
+type RawFallback = {
+  fields: CvParseFieldResult[]
+  skills: ProfileTagGroup
+  languages: ProfileTagGroup
+  workHistory: Array<Omit<WorkExperienceEntry, 'id'>>
+}
+
+const FALLBACK_RAW: Record<string, RawFallback> = {
+  'pdf-en': pdfEn as RawFallback,
+  'docx-en': docxEn as RawFallback,
+  'pdf-scan': pdfScan as RawFallback,
+}
+
+function buildProfile(
+  sampleId: string,
+  meta: { label: string; fileName: string; isScannedPdf: boolean },
+): CvParseProfileData {
+  const raw = FALLBACK_RAW[sampleId]
+  return { ...meta, ...applyCvParsePayload(sampleId, meta.fileName, raw) }
+}
+
+export const CV_PARSE_PROFILES: Record<string, CvParseProfileData> = {
+  'pdf-en': buildProfile('pdf-en', {
     label: '01-sara-al-hinai-en.pdf',
     fileName: '01-sara-al-hinai-en.pdf',
     isScannedPdf: false,
-    fields: [
-      { key: 'name', value: 'Sara Al-Hinai', status: 'parsed', evidence: 'Sara Al-Hinai — Senior Financial Analyst', source: 'Electronic PDF, page 1 header' },
-      { key: 'email', value: 'sara.alhinai@example.om', status: 'parsed', evidence: 'sara.alhinai@example.om', source: 'Contact block, page 1' },
-      { key: 'experience', value: '7', status: 'parsed', evidence: 'seven years of portfolio analysis', source: 'Experience section, page 1' },
-      { key: 'education', value: 'MSc Finance, Sultan Qaboos University', status: 'parsed', evidence: 'MSc Finance, Sultan Qaboos University', source: 'Education section, page 1', confidence: 0.98 },
-      { key: 'certification', value: '', status: 'missing', evidence: '', source: 'No certification found in source document' },
-    ],
-  },
-  'docx-en': {
+  }),
+  'docx-en': buildProfile('docx-en', {
     label: '02-khalid-al-balushi-en.docx',
     fileName: '02-khalid-al-balushi-en.docx',
     isScannedPdf: false,
-    fields: [
-      { key: 'name', value: 'Sara Al-Hinai', status: 'parsed', evidence: 'Sara Al-Hinai', source: 'DOCX body, paragraph 1' },
-      { key: 'email', value: 'sara.alhinai@example.om', status: 'parsed', evidence: 'sara.alhinai@example.om', source: 'DOCX contact line' },
-      { key: 'experience', value: '7', status: 'parsed', evidence: '7 years experience in portfolio analysis', source: 'DOCX experience block' },
-      { key: 'education', value: 'MSc Finance, Sultan Qaboos University', status: 'parsed', evidence: 'MSc Finance, Sultan Qaboos University', source: 'DOCX education block', confidence: 0.96 },
-      { key: 'certification', value: '', status: 'missing', evidence: '', source: 'No certification found in source document' },
-    ],
-  },
-  'pdf-scan': {
+  }),
+  'pdf-scan': buildProfile('pdf-scan', {
     label: '04-noor-al-hashmi-scan.pdf',
     fileName: '04-noor-al-hashmi-scan.pdf',
     isScannedPdf: true,
-    fields: [
-      { key: 'name', value: 'Sara Al-Hinai', status: 'parsed', evidence: 'Sara Al-Hinai', source: 'Scanned PDF, page 1 (OCR)' },
-      { key: 'email', value: 'sara.alhinai@example.om', status: 'parsed', evidence: 'sara.alhinai@example.om', source: 'Scanned PDF, page 1 (OCR)' },
-      { key: 'experience', value: '7', status: 'parsed', evidence: 'seven years', source: 'Scanned PDF, page 1 (OCR)' },
-      { key: 'education', value: 'MSc Finance, Sultan Qaboos University', status: 'review', evidence: 'MSc Finance, Sultan Qaboos University', source: 'Scanned PDF, page 1 (OCR)', confidence: 0.82 },
-      { key: 'certification', value: '', status: 'missing', evidence: '', source: 'Not found in scanned document' },
-    ],
-  },
+  }),
 }
 
 export function resolveSampleProfileId(fileName: string): string | null {
@@ -61,6 +71,47 @@ export function resolveSampleProfileId(fileName: string): string | null {
   return null
 }
 
-export function getCvParseProfile(sampleId: string): CvParseProfile | undefined {
+export function getCvParseProfile(sampleId: string): CvParseProfileData | undefined {
   return CV_PARSE_PROFILES[sampleId]
+}
+
+export function applyScalarParse(
+  current: ProfileField[],
+  parsed: CvParseFieldResult[],
+): ProfileField[] {
+  return current.map((field) => {
+    const update = parsed.find((entry) => entry.key === field.key)
+    if (!update) return field
+    const confidence = update.confidence ? ` (OCR confidence ${update.confidence.toFixed(2)})` : ''
+    return {
+      ...field,
+      value: update.value ?? field.value,
+      status: update.status,
+      evidence: update.evidence ?? field.evidence,
+      source: `${update.source}${confidence}`,
+    }
+  })
+}
+
+export function applyCvParsePayload(
+  sampleId: string,
+  fileName: string,
+  payload: {
+    fields?: CvParseFieldResult[]
+    skills?: ProfileTagGroup
+    languages?: ProfileTagGroup
+    workHistory?: Array<Omit<WorkExperienceEntry, 'id'> | WorkExperienceEntry>
+  },
+): CvParsePayload {
+  const fields = guardV1Certification(
+    applyScalarParse(emptyProfileFields(), payload.fields ?? []),
+    sampleId,
+    fileName,
+  )
+  return {
+    fields,
+    skills: payload.skills ?? emptyProfileTagGroup(),
+    languages: payload.languages ?? emptyProfileTagGroup(),
+    workHistory: workHistoryWithIds(payload.workHistory ?? []),
+  }
 }

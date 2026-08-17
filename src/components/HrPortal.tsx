@@ -5,6 +5,9 @@ import { EvidenceModal } from './EvidenceModal'
 import { SourceDocumentModal } from './SourceDocumentModal'
 import { EvaluationReportPanel } from './EvaluationReportPanel'
 import { InterviewReviewPanel } from './InterviewReviewPanel'
+import { CandidateJourneyPanel } from './CandidateJourneyPanel'
+import { ScoreSummaryPanel } from './ScoreSummaryPanel'
+import { CurrentCandidateCard } from './CurrentCandidateCard'
 import { Layout } from './Layout'
 import { AuditTrailTable } from './AuditTrailTable'
 import { MatchDashboard } from './MatchDashboard'
@@ -41,6 +44,7 @@ export function HrPortal() {
   const [assessmentError, setAssessmentError] = useState('')
   const [matches, setMatches] = useState<CandidateMatchWithTips[]>(() => rankCandidates())
   const [matchLoading, setMatchLoading] = useState(false)
+  const [journeyCandidate, setJourneyCandidate] = useState<string | null>(null)
 
   const matchesMemo = matches
   const filtered = matchesMemo.filter((m) => {
@@ -206,33 +210,57 @@ export function HrPortal() {
             <button type="button" onClick={exportCsv}><Download size={16} /> Export Excel/CSV</button>
             {exportMsg && <span className="ok-text">{exportMsg}</span>}
           </div>
-          <MatchDashboard jobTitle={FINANCE_JOB.title} matches={filtered} selectedId={selectedId} onSelect={setSelectedId} onEvidence={(title, evidence, documentText) => setEvidenceModal({ title, evidence, source: documentText })} onOpenSource={(title, url) => setSourceDoc({ title, url })} />
+          <MatchDashboard
+            jobTitle={FINANCE_JOB.title}
+            matches={filtered}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+            onEvidence={(title, evidence, documentText) =>
+              setEvidenceModal({ title, evidence, source: documentText })
+            }
+            onOpenSource={(title, url) => setSourceDoc({ title, url })}
+            onViewJourney={setJourneyCandidate}
+          />
           <button type="button" className="primary" onClick={() => setStep('H2')}>Continue to shortlist / reject →</button>
         </section>
       )}
 
       {step === 'H2' && (
-        <section className="grid-2">
-          <div className="card">
-            <h1>H2 · Shortlist {selected.candidate.name}</h1>
-            <p>Match score: <strong>{selected.totalScore}%</strong> · {selected.matchedCount}/{selected.totalDimensions} attributes</p>
-            <textarea placeholder="Reason for shortlist (required)" value={shortlistedReason} onChange={(e) => setShortlistedReason(e.target.value)} />
-            <button type="button" className="primary" disabled={!shortlistedReason.trim()} onClick={() => {
-              setPipeline({ shortlisted: true })
-              syncIntegration('jadarah.pipelineStatus', 'H2', `Shortlisted · ${selected.candidate.name}`)
-              log('Recruiter', 'Shortlisted', `${selected.candidate.name}: ${shortlistedReason}`, 'H2')
-              setStep('H3')
-            }}>Shortlist candidate</button>
-          </div>
-          <div className="card">
-            <h1>Disqualify weak match</h1>
-            <p>Example: Yusuf Al-Rashdi ({matchesMemo.find((m) => m.candidateId === 'cand-yusuf')?.totalScore}%)</p>
-            <textarea placeholder="Reason for disqualify (required)" value={disqualifiedReason} onChange={(e) => setDisqualifiedReason(e.target.value)} />
-            <button type="button" className="danger" disabled={!disqualifiedReason.trim()} onClick={() => {
-              setPipeline({ disqualified: true })
-              syncIntegration('jadarah.pipelineStatus', 'H2', 'Disqualified · Yusuf Al-Rashdi (example)')
-              log('Recruiter', 'Disqualified', `Yusuf Al-Rashdi: ${disqualifiedReason}`, 'H2')
-            }}>{pipeline.disqualified ? 'Disqualified · reason recorded' : 'Disqualify (example)'}</button>
+        <section className="stack">
+          <header className="section-head">
+            <div>
+              <h1>H2 · Shortlist or reject candidate</h1>
+              <p>Review the candidate's match score and decide whether to move forward or disqualify</p>
+            </div>
+          </header>
+
+          <CurrentCandidateCard
+            candidate={selected}
+            onChangeCandidate={() => setStep('H1')}
+          />
+
+          <div className="grid-2">
+            <div className="card">
+              <h3>Shortlist for interview</h3>
+              <p className="muted">Advance {selected.candidate.name} to the interview stage</p>
+              <textarea placeholder="Reason for shortlist (required)" value={shortlistedReason} onChange={(e) => setShortlistedReason(e.target.value)} />
+              <button type="button" className="primary" disabled={!shortlistedReason.trim()} onClick={() => {
+                setPipeline({ shortlisted: true })
+                syncIntegration('jadarah.pipelineStatus', 'H2', `Shortlisted · ${selected.candidate.name}`)
+                log('Recruiter', 'Shortlisted', `${selected.candidate.name}: ${shortlistedReason}`, 'H2')
+                setStep('H3')
+              }}>Shortlist candidate</button>
+            </div>
+            <div className="card">
+              <h3>Disqualify candidate</h3>
+              <p className="muted">Remove {selected.candidate.name} from the pipeline</p>
+              <textarea placeholder="Reason for disqualify (required)" value={disqualifiedReason} onChange={(e) => setDisqualifiedReason(e.target.value)} />
+              <button type="button" className="danger" disabled={!disqualifiedReason.trim()} onClick={() => {
+                setPipeline({ disqualified: true })
+                syncIntegration('jadarah.pipelineStatus', 'H2', `Disqualified · ${selected.candidate.name}`)
+                log('Recruiter', 'Disqualified', `${selected.candidate.name}: ${disqualifiedReason}`, 'H2')
+              }}>{pipeline.disqualified ? 'Disqualified · reason recorded' : 'Disqualify candidate'}</button>
+            </div>
           </div>
         </section>
       )}
@@ -240,9 +268,16 @@ export function HrPortal() {
       {step === 'H3' && (
         <section className="stack">
           <header className="section-head">
-            <h1>H3 · Review interview recording</h1>
-            <p className="muted">HR-only · avatar replay + transcript · candidate cannot access.</p>
+            <div>
+              <h1>H3 · Review interview recording</h1>
+              <p className="muted">HR-only · avatar replay + transcript · candidate cannot access.</p>
+            </div>
           </header>
+
+          <CurrentCandidateCard
+            candidate={selected}
+            onChangeCandidate={() => setStep('H1')}
+          />
           <div className="kpi-row compact">
             <div className="kpi-card"><span>Assessment</span><strong>{assessmentScore || '—'}%</strong></div>
             <div className="kpi-card"><span>Interview turns</span><strong>{interviewTurns.length}</strong></div>
@@ -259,11 +294,27 @@ export function HrPortal() {
       )}
 
       {step === 'H4' && (
-        <section className="card stack final-decision-screen">
-          <h1>H4 · Final human decision</h1>
-          <p>AI provides recommendation only — recruiter holds final authority. Outcome syncs to simulated Jadarah + Oracle EBS endpoints.</p>
+        <section className="stack final-decision-screen">
+          <header className="section-head">
+            <div>
+              <h1>H4 · Final human decision</h1>
+              <p>AI provides recommendation only — recruiter holds final authority. Outcome syncs to simulated Jadarah + Oracle EBS endpoints.</p>
+            </div>
+          </header>
 
-          <div className="ai-rec-card">
+          <CurrentCandidateCard
+            candidate={selected}
+            onChangeCandidate={() => setStep('H1')}
+          />
+
+          <ScoreSummaryPanel
+            match={selected}
+            assessmentScore={assessmentScore}
+            interviewReport={interviewReport}
+          />
+
+          <div className="card stack">
+            <div className="ai-rec-card">
             <span className="ai-label">AI recommendation</span>
             <strong>{interviewReport?.recommendation ?? (assessmentLoading ? 'Generating LLM recommendation…' : 'Complete C4 interview to generate recommendation')}</strong>
             <p>Based on {selected.totalScore}% match · {assessmentScore}% assessment · evidence-linked interview review.</p>
@@ -299,6 +350,7 @@ export function HrPortal() {
           >
             <UserCheck size={16} /> Confirm final decision (human gate)
           </button>
+          </div>
         </section>
       )}
 
@@ -320,6 +372,16 @@ export function HrPortal() {
 
       {evidenceModal && <EvidenceModal {...evidenceModal} onClose={() => setEvidenceModal(null)} />}
       {sourceDoc && <SourceDocumentModal {...sourceDoc} onClose={() => setSourceDoc(null)} />}
+      {journeyCandidate && (
+        <CandidateJourneyPanel
+          match={matches.find((m) => m.candidateId === journeyCandidate) ?? matches[0]}
+          assessmentScore={assessmentScore}
+          interviewTurns={interviewTurns}
+          interviewReport={interviewReport}
+          pipeline={pipeline}
+          onClose={() => setJourneyCandidate(null)}
+        />
+      )}
     </Layout>
   )
 }

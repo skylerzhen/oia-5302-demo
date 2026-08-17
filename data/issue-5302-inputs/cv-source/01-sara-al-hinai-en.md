@@ -2,16 +2,20 @@
 
 **Synthetic candidate · English electronic-PDF source**  
 Email: sara.alhinai@example.om  
+Phone: +968 9123 4567  
+Nationality: Omani  
 Location: Muscat, Oman
 
 ## Profile
 
 Senior financial analyst with seven years of portfolio analysis, risk reporting
-and bilingual board communication experience.
+and bilingual board communication experience in **sovereign wealth and asset
+management**.
 
 ## Experience
 
 **Senior Financial Analyst — Gulf Sovereign Investment Services**  
+Industry: Sovereign wealth & investment services · Muscat, Oman  
 2021–Present
 
 - Led quarterly portfolio variance analysis for multi-asset mandates.
@@ -22,6 +26,7 @@ and bilingual board communication experience.
   control.
 
 **Financial Analyst — Oman Capital Advisory**  
+Industry: Investment advisory · Muscat, Oman  
 2018–2021
 
 - Prepared investment-performance and exposure reports.
@@ -29,7 +34,8 @@ and bilingual board communication experience.
 
 ## Education
 
-MSc Finance, Sultan Qaboos University
+MSc Finance · Sultan Qaboos University  
+GPA: 3.72/4.0 · Graduation: June 2017 · Specialization: Finance
 
 ## Skills
 

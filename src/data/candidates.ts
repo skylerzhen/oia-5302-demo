@@ -1,27 +1,13 @@
 import type { CandidateProfile, ProfileField } from '../types'
+import { emptyProfileFields } from './cvProfileSchema'
+import { getCvParseProfile } from './cvParseProfiles'
+
+export { emptyProfileFields } from './cvProfileSchema'
 
 export const PRIMARY_CANDIDATE_ID = 'cand-sara'
 
-const PROFILE_FIELD_DEFS: Array<Pick<ProfileField, 'key' | 'label'>> = [
-  { key: 'name', label: 'Full name' },
-  { key: 'email', label: 'Email' },
-  { key: 'experience', label: 'Years of experience' },
-  { key: 'education', label: 'Education' },
-  { key: 'certification', label: 'Professional certification' },
-]
-
-export function emptyProfileFields(): ProfileField[] {
-  return PROFILE_FIELD_DEFS.map((field) => ({
-    ...field,
-    value: '',
-    status: 'missing',
-    evidence: '',
-    source: '',
-  }))
-}
-
 export function primaryCandidateProfileFields(): ProfileField[] {
-  return CANDIDATES.find((c) => c.id === PRIMARY_CANDIDATE_ID)!.fields.map((f) => ({ ...f }))
+  return getCvParseProfile('pdf-en')?.fields ?? emptyProfileFields()
 }
 
 export const CANDIDATES: CandidateProfile[] = [
@@ -71,6 +57,14 @@ Education: MSc Finance, Sultan Qaboos University.`,
         status: 'review',
         evidence: 'MSc Finance, Sultan Qaboos University',
         source: 'Education section, page 1 (OCR confidence 0.82)',
+      },
+      {
+        key: 'skills',
+        label: 'Key skills',
+        value: 'Portfolio analysis, Risk reporting, Excel modeling, Stakeholder communication, English',
+        status: 'parsed',
+        evidence: 'Skills: Portfolio analysis, Risk reporting, Excel modeling',
+        source: 'Skills section, page 1',
       },
       {
         key: 'certification',

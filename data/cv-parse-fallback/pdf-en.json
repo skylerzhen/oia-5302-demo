@@ -1,0 +1,62 @@
+{
+  "fields": [
+    { "key": "name", "value": "Sara Al-Hinai", "status": "parsed", "evidence": "Sara Al-Hinai", "source": "CV header" },
+    { "key": "email", "value": "sara.alhinai@example.om", "status": "parsed", "evidence": "sara.alhinai@example.om", "source": "Contact block" },
+    { "key": "phone", "value": "+968 9123 4567", "status": "parsed", "evidence": "+968 9123 4567", "source": "Contact block" },
+    { "key": "nationality", "value": "Omani", "status": "parsed", "evidence": "Nationality: Omani", "source": "Contact block" },
+    { "key": "address", "value": "Muscat, Oman", "status": "parsed", "evidence": "Location: Muscat, Oman", "source": "Contact block" },
+    { "key": "experience", "value": "7", "status": "parsed", "evidence": "seven years of portfolio analysis", "source": "Profile summary" },
+    { "key": "educationLevel", "value": "MSc", "status": "parsed", "evidence": "MSc Finance", "source": "Education section" },
+    { "key": "university", "value": "Sultan Qaboos University", "status": "parsed", "evidence": "Sultan Qaboos University", "source": "Education section" },
+    { "key": "gpa", "value": "3.72/4.0", "status": "parsed", "evidence": "GPA: 3.72/4.0", "source": "Education section" },
+    { "key": "graduationDate", "value": "June 2017", "status": "parsed", "evidence": "Graduation: June 2017", "source": "Education section" },
+    { "key": "specialization", "value": "Finance", "status": "parsed", "evidence": "Specialization: Finance", "source": "Education section" },
+    { "key": "companyName", "value": "Gulf Sovereign Investment Services", "status": "parsed", "evidence": "Senior Financial Analyst — Gulf Sovereign Investment Services", "source": "Experience section" },
+    { "key": "positionTitle", "value": "Senior Financial Analyst", "status": "parsed", "evidence": "Senior Financial Analyst — Gulf Sovereign Investment Services", "source": "Experience section" },
+    { "key": "industry", "value": "Sovereign wealth & investment services", "status": "parsed", "evidence": "Industry: Sovereign wealth & investment services", "source": "Experience section" },
+    { "key": "location", "value": "Muscat, Oman", "status": "parsed", "evidence": "Location: Muscat, Oman", "source": "Contact block" },
+    { "key": "certification", "value": "", "status": "missing", "evidence": "", "source": "Not found in source document" }
+  ],
+  "skills": {
+    "items": ["Portfolio analysis", "Risk reporting", "Excel modelling", "Variance analysis"],
+    "status": "parsed",
+    "evidence": "Portfolio analysis · Risk reporting · Excel modelling · Variance analysis",
+    "source": "Skills section"
+  },
+  "languages": {
+    "items": ["Arabic", "English"],
+    "status": "parsed",
+    "evidence": "Arabic · English",
+    "source": "Skills section"
+  },
+  "workHistory": [
+    {
+      "company": "Gulf Sovereign Investment Services",
+      "title": "Senior Financial Analyst",
+      "start": "2021",
+      "end": "Present",
+      "responsibilities": [
+        "Led quarterly portfolio variance analysis for multi-asset mandates.",
+        "Isolated duration, sector-allocation and liquidity drivers; presented risk impact to senior stakeholders.",
+        "Prepared Arabic and English board reporting packs with controlled figures.",
+        "Maintained Excel forecasting models with documented assumptions and version control."
+      ],
+      "status": "parsed",
+      "evidence": "Senior Financial Analyst — Gulf Sovereign Investment Services · 2021–Present",
+      "source": "Experience section"
+    },
+    {
+      "company": "Oman Capital Advisory",
+      "title": "Financial Analyst",
+      "start": "2018",
+      "end": "2021",
+      "responsibilities": [
+        "Prepared investment-performance and exposure reports.",
+        "Reconciled forecast changes against portfolio benchmarks."
+      ],
+      "status": "parsed",
+      "evidence": "Financial Analyst — Oman Capital Advisory · 2018–2021",
+      "source": "Experience section"
+    }
+  ]
+}
