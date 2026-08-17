@@ -19,10 +19,10 @@ export function RoleSelect({ onSelect }: RoleSelectProps) {
         </div>
 
         <div className="value-pillars">
-          <div><Globe size={18} /> <strong>Data sovereignty</strong><span>On-prem inference in Oman</span></div>
+          <div><Globe size={18} /> <strong>Data sovereignty</strong><span>Designed for sovereign deployment in Oman</span></div>
           <div><WifiOff size={18} /> <strong>Offline interview</strong><span>Egress disabled during avatar segment</span></div>
           <div><strong>Assessment</strong><span>Role-specific MCQ + AI avatar interview</span></div>
-          <div><strong>HR gate</strong><span>AI recommends — humans decide</span></div>
+          <div><strong>HR gate</strong><span>AI recommends — humans decide with audit trail</span></div>
         </div>
 
         <button
@@ -31,7 +31,7 @@ export function RoleSelect({ onSelect }: RoleSelectProps) {
           onClick={() => setOffline(!offline)}
         >
           <span className="network-lamp" />
-          {offline ? 'Offline · local inference (demo)' : 'Connected · OIA intranet (click to simulate unplug)'}
+          {offline ? 'Simulated offline · egress blocked' : 'Connected · cloud demo (click to simulate offline)'}
         </button>
 
         <p className="muted">Separate portals — candidates and HR never share the same workflow screen.</p>

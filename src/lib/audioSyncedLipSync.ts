@@ -42,15 +42,24 @@ export async function runAudioSyncedLipSync(options: {
   signal?: AbortSignal
 }): Promise<void> {
   const { audio, marks, onTick, signal } = options
-  let audioCtx: AudioContext | null = null
   let analyser: AnalyserNode | null = null
+  let mediaSource: MediaElementAudioSourceNode | null = null
   let raf = 0
 
   const cleanup = () => {
     if (raf) cancelAnimationFrame(raf)
     raf = 0
-    void audioCtx?.close()
-    audioCtx = null
+    try {
+      mediaSource?.disconnect()
+    } catch {
+      // Already disconnected.
+    }
+    try {
+      analyser?.disconnect()
+    } catch {
+      // Already disconnected.
+    }
+    mediaSource = null
     analyser = null
   }
 
@@ -70,16 +79,16 @@ export async function runAudioSyncedLipSync(options: {
     if (analyser) return
     unlockAudioPlayback()
     const ctx = getSharedAudioContext()
-    if (!ctx) return
-    audioCtx = ctx
+    if (!ctx || ctx.state === 'closed') return
     try {
-      const source = ctx.createMediaElementSource(audio)
+      mediaSource = ctx.createMediaElementSource(audio)
       analyser = ctx.createAnalyser()
       analyser.fftSize = 512
       analyser.smoothingTimeConstant = 0.35
-      source.connect(analyser)
+      mediaSource.connect(analyser)
       analyser.connect(ctx.destination)
     } catch {
+      mediaSource = null
       analyser = null
     }
   }
@@ -98,8 +107,6 @@ export async function runAudioSyncedLipSync(options: {
 
     const startLoop = () => {
       unlockAudioPlayback()
-      const ctx = getSharedAudioContext()
-      if (ctx) audioCtx = ctx
       ensureAnalyser()
       tick()
     }
@@ -122,6 +129,96 @@ export async function runAudioSyncedLipSync(options: {
       signal?.removeEventListener('abort', onAbort)
       reject(error instanceof Error ? error : new Error('Could not play synthesized speech audio'))
     })
+  })
+}
+
+export async function runBufferSyncedLipSync(options: {
+  ctx: AudioContext
+  audioBuffer: AudioBuffer
+  marks: VisemeMark[]
+  onTick: (tick: LipSyncTick) => void
+  signal?: AbortSignal
+}): Promise<void> {
+  const { ctx, audioBuffer, marks, onTick, signal } = options
+  let source: AudioBufferSourceNode | null = null
+  let analyser: AnalyserNode | null = null
+  let raf = 0
+  let startedAt = 0
+
+  const cleanup = () => {
+    if (raf) cancelAnimationFrame(raf)
+    raf = 0
+    try {
+      source?.stop()
+    } catch {
+      // Already stopped.
+    }
+    try {
+      source?.disconnect()
+    } catch {
+      // Already disconnected.
+    }
+    try {
+      analyser?.disconnect()
+    } catch {
+      // Already disconnected.
+    }
+    source = null
+    analyser = null
+  }
+
+  const onAbort = () => {
+    cleanup()
+    onTick({ viseme: 'rest', jawOpen: 0 })
+  }
+
+  if (signal?.aborted) {
+    onAbort()
+    return
+  }
+  signal?.addEventListener('abort', onAbort, { once: true })
+
+  unlockAudioPlayback()
+  if (ctx.state === 'suspended') {
+    await ctx.resume()
+  }
+
+  source = ctx.createBufferSource()
+  source.buffer = audioBuffer
+  analyser = ctx.createAnalyser()
+  analyser.fftSize = 512
+  analyser.smoothingTimeConstant = 0.35
+  source.connect(analyser)
+  analyser.connect(ctx.destination)
+
+  await new Promise<void>((resolve, reject) => {
+    const tick = () => {
+      if (signal?.aborted) return
+      const timeMs = Math.max(0, (ctx.currentTime - startedAt) * 1000)
+      const viseme = visemeAtTime(marks, timeMs)
+      const audioJaw = computeAudioJawLevel(analyser!)
+      onTick({ viseme, jawOpen: blendJaw(viseme, audioJaw) })
+      if (timeMs < audioBuffer.duration * 1000 + 50) {
+        raf = requestAnimationFrame(tick)
+      }
+    }
+
+    source!.onended = () => {
+      cleanup()
+      signal?.removeEventListener('abort', onAbort)
+      onTick({ viseme: 'rest', jawOpen: 0 })
+      resolve()
+    }
+
+    try {
+      startedAt = ctx.currentTime
+      source!.start(0)
+      tick()
+    } catch (error) {
+      cleanup()
+      signal?.removeEventListener('abort', onAbort)
+      reject(error instanceof Error ? error : new Error('Could not play synthesized speech audio'))
+    }
   })
 }
 

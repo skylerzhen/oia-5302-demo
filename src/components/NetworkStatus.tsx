@@ -9,11 +9,11 @@ export function NetworkStatus({ offline, onToggle }: NetworkStatusProps) {
       type="button"
       className={`network-status ${offline ? 'offline' : 'online'}`}
       onClick={onToggle}
-      title={offline ? 'Offline policy enabled: external browser egress is blocked' : 'Enable offline demo policy'}
+      title={offline ? 'Simulated offline mode: external egress blocked for demo' : 'Simulate offline policy (demo)'}
     >
       <span className="network-lamp" aria-hidden />
       <span className="network-label">
-        {offline ? 'Offline policy · egress blocked' : 'Connected · OIA intranet'}
+        {offline ? 'Simulated offline · egress blocked' : 'Connected · cloud demo'}
       </span>
     </button>
   )

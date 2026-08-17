@@ -30,8 +30,3 @@ BSc Accounting
 ## Skills
 
 Financial reporting · Excel · Arabic · Management reporting
-
-## Evidence anchors for demo
-
-- “Produced monthly management packs and variance commentary”
-- “Limited direct portfolio-analysis exposure”

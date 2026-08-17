@@ -5,10 +5,13 @@ import { buildVisemeTimeline } from './visemeTimeline'
 import { pickSpeechVoice, preloadSpeechVoices as loadSpeechVoices } from './pickSpeechVoice'
 import { isOpeningPresetText, OPENING_AUDIO_URL } from './demoAudio'
 import { synthesizeEdgeTtsBrowser } from './edgeTtsClient'
-import { unlockAudioPlayback } from './audioUnlock'
+import { unlockAudioPlayback, getSharedAudioContext } from './audioUnlock'
+import { getHeyGenVideoElement, playHeyGenHls } from './heygenPlayer'
+import { ensureLiveAvatarSession, getLiveAvatarSessionId } from './liveavatarPlayer'
 import {
   marksFromTts,
   runAudioSyncedLipSync,
+  runBufferSyncedLipSync,
   runClockSyncedLipSync,
   type LipSyncTick,
 } from './audioSyncedLipSync'
@@ -17,6 +20,19 @@ export type SpeechLanguage = 'en'
 
 const SERVER_TTS_TIMEOUT_MS = 14_000
 const CLIENT_EDGE_TTS_TIMEOUT_MS = 12_000
+const HEYGEN_SPEAK_TIMEOUT_MS = 52_000
+const LIVEAVATAR_SPEAK_TIMEOUT_MS = 92_000
+
+let heygenAvatarEnabled = false
+let liveAvatarEnabled = false
+
+export function setHeyGenAvatarEnabled(enabled: boolean) {
+  heygenAvatarEnabled = enabled
+}
+
+export function setLiveAvatarEnabled(enabled: boolean) {
+  liveAvatarEnabled = enabled
+}
 
 function wait(ms: number, signal?: AbortSignal) {
   return new Promise<void>((resolve, reject) => {
@@ -144,15 +160,46 @@ async function speakWithAudio(
   marks: ReturnType<typeof buildVisemeTimeline>,
   signal?: AbortSignal,
 ) {
+  unlockAudioPlayback()
+  const ctx = getSharedAudioContext()
+  if (ctx && ctx.state !== 'closed') {
+    try {
+      const binary = atob(audioBase64)
+      const bytes = new Uint8Array(binary.length)
+      for (let i = 0; i < binary.length; i += 1) {
+        bytes[i] = binary.charCodeAt(i)
+      }
+      const audioBuffer = await ctx.decodeAudioData(bytes.buffer.slice(0))
+      await runBufferSyncedLipSync({ ctx, audioBuffer, marks, onTick: publishTick, signal })
+      return
+    } catch {
+      // Fall back to HTMLAudioElement below.
+    }
+  }
+
   const audio = new Audio(`data:${mimeType};base64,${audioBase64}`)
   await speakWithAudioElement(audio, marks, signal)
 }
 
 async function speakFromBlob(blob: Blob, text: string, signal?: AbortSignal) {
+  unlockAudioPlayback()
+  const ctx = getSharedAudioContext()
+  const marks = buildVisemeTimeline(text, 'en', estimateDurationMs(text))
+
+  if (ctx && ctx.state !== 'closed') {
+    try {
+      const arrayBuffer = await blob.arrayBuffer()
+      const audioBuffer = await ctx.decodeAudioData(arrayBuffer.slice(0))
+      await runBufferSyncedLipSync({ ctx, audioBuffer, marks, onTick: publishTick, signal })
+      return
+    } catch {
+      // Fall back to object URL playback.
+    }
+  }
+
   const url = URL.createObjectURL(blob)
   try {
     const audio = new Audio(url)
-    const marks = buildVisemeTimeline(text, 'en', estimateDurationMs(text))
     await speakWithAudioElement(audio, marks, signal)
   } finally {
     URL.revokeObjectURL(url)
@@ -190,6 +237,62 @@ async function fetchServerTts(text: string, signal?: AbortSignal): Promise<TtsRe
   }
 }
 
+async function speakWithLiveAvatar(text: string, signal?: AbortSignal): Promise<boolean> {
+  if (!liveAvatarEnabled) return false
+
+  try {
+    if (!getLiveAvatarSessionId()) {
+      const ready = await ensureLiveAvatarSession()
+      if (!ready) return false
+    }
+
+    const sessionId = getLiveAvatarSessionId()
+    if (!sessionId) return false
+
+    avatarLipSyncBus.set({ speaking: true, viseme: 'rest', jawOpen: 0 })
+    const result = await Promise.race([
+      localAi.liveavatarSpeak({ sessionId, text }),
+      wait(LIVEAVATAR_SPEAK_TIMEOUT_MS, signal).then(() => null),
+    ])
+    avatarLipSyncBus.set({ viseme: 'rest', jawOpen: 0, speaking: false })
+    return Boolean(result?.ok)
+  } catch {
+    avatarLipSyncBus.set({ viseme: 'rest', jawOpen: 0, speaking: false })
+    return false
+  }
+}
+
+async function speakWithHeyGen(
+  text: string,
+  prefetchedTts: TtsResult | null | undefined,
+  signal?: AbortSignal,
+): Promise<boolean> {
+  const video = getHeyGenVideoElement()
+  if (!heygenAvatarEnabled || !video) return false
+
+  try {
+    const payload: { text: string; audioBase64?: string; mimeType?: string } = { text }
+    if (prefetchedTts?.audioBase64) {
+      payload.audioBase64 = prefetchedTts.audioBase64
+      payload.mimeType = prefetchedTts.mimeType ?? 'audio/mpeg'
+    }
+
+    const result = await Promise.race([
+      localAi.heygenSpeak(payload),
+      wait(HEYGEN_SPEAK_TIMEOUT_MS, signal).then(() => null),
+    ])
+    if (!result?.hlsUrl) return false
+
+    avatarLipSyncBus.set({ speaking: true, viseme: 'rest', jawOpen: 0 })
+    await playHeyGenHls(video, result.hlsUrl, signal)
+    avatarLipSyncBus.set({ viseme: 'rest', jawOpen: 0, speaking: false })
+    return true
+  } catch {
+    avatarLipSyncBus.set({ viseme: 'rest', jawOpen: 0, speaking: false })
+    return false
+  }
+}
+
 export function isBrowserTtsSupported() {
   return typeof window !== 'undefined' && 'speechSynthesis' in window
 }
@@ -199,8 +302,9 @@ export async function speakInterviewLine(options: {
   language?: SpeechLanguage
   onViseme?: (viseme: Viseme) => void
   signal?: AbortSignal
+  prefetchedTts?: TtsResult | null
 }) {
-  const { text, onViseme, signal } = options
+  const { text, onViseme, signal, prefetchedTts } = options
   const unsubscribe = avatarLipSyncBus.subscribe((snapshot) => {
     onViseme?.(snapshot.viseme)
   })
@@ -217,23 +321,30 @@ export async function speakInterviewLine(options: {
       }
     }
 
-    // Always try server first — OpenAI / Edge TTS live on the API host when configured.
-    const serverResult = await fetchServerTts(text, signal)
+    const resolvedTts = prefetchedTts ?? await fetchServerTts(text, signal)
 
-    if (serverResult?.audioBase64) {
+    if (await speakWithLiveAvatar(text, signal)) {
+      return 'liveavatar'
+    }
+
+    if (await speakWithHeyGen(text, resolvedTts, signal)) {
+      return 'heygen'
+    }
+
+    if (resolvedTts?.audioBase64) {
       try {
-        const marks = serverResult.visemeMarks?.length
-          ? serverResult.visemeMarks
+        const marks = resolvedTts.visemeMarks?.length
+          ? resolvedTts.visemeMarks
           : marksFromTts(text, 'en', estimateDurationMs(text))
         await speakWithAudio(
-          serverResult.audioBase64,
-          serverResult.mimeType ?? 'audio/mpeg',
+          resolvedTts.audioBase64,
+          resolvedTts.mimeType ?? 'audio/mpeg',
           marks,
           signal,
         )
-        if (serverResult.ttsProvider === 'openai') return 'openai'
-        if (serverResult.ttsProvider === 'edge') return 'edge'
-        return serverResult.visemeSource === 'azure' ? 'azure' : serverResult.mode
+        if (resolvedTts.ttsProvider === 'openai') return 'openai'
+        if (resolvedTts.ttsProvider === 'edge') return 'edge'
+        return resolvedTts.visemeSource === 'azure' ? 'azure' : resolvedTts.mode
       } catch {
         // MP3 playback blocked — fall through.
       }
@@ -255,7 +366,11 @@ export function preloadSpeechVoices() {
   void loadSpeechVoices()
 }
 
+let warmSpeechDone = false
+
 export function warmInterviewSpeech() {
+  if (warmSpeechDone) return
+  warmSpeechDone = true
   unlockAudioPlayback()
   void loadSpeechVoices()
   try {

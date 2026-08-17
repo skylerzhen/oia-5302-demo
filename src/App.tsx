@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { createAuditEntry } from './lib/audit'
 import {
   createSimulatedIntegrationSync,
@@ -33,24 +33,24 @@ export default function App() {
     return enableExternalEgressGuard()
   }, [session.offline])
 
-  function patchSession(update: Partial<DemoSession> | ((prev: DemoSession) => Partial<DemoSession>)) {
+  const patchSession = useCallback((update: Partial<DemoSession> | ((prev: DemoSession) => Partial<DemoSession>)) => {
     setSession((prev) => {
       const next = typeof update === 'function' ? update(prev) : update
       return { ...prev, ...next }
     })
-  }
+  }, [])
 
-  function log(actor: string, action: string, detail: string, step: string) {
+  const log = useCallback((actor: string, action: string, detail: string, step: string) => {
     patchSession((prev) => ({
       auditLog: [...prev.auditLog, createAuditEntry(actor, action, detail, step)],
     }))
-  }
+  }, [patchSession])
 
-  function syncIntegration(
+  const syncIntegration = useCallback((
     key: import('./lib/simulatedIntegrations').SimulatedIntegrationKey,
     step: string,
     detail?: string,
-  ) {
+  ) => {
     const event = createSimulatedIntegrationSync(key, step)
     patchSession((prev) => ({
       integrationSyncs: [...prev.integrationSyncs, event],
@@ -65,7 +65,7 @@ export default function App() {
       ],
     }))
     return event
-  }
+  }, [patchSession])
 
   function setPipeline(patch: Partial<PipelineStatus>) {
     patchSession((prev) => ({ pipeline: { ...prev.pipeline, ...patch } }))
@@ -114,7 +114,7 @@ export default function App() {
         return {
           ...fresh,
           role: 'candidate',
-          offline: true,
+          offline: false,
           auditLog: [
             createAuditEntry(
               'Candidate',

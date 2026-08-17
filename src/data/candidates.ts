@@ -155,7 +155,7 @@ export const CV_UPLOAD_SAMPLES = [
     id: 'docx-en',
     label: '02-khalid-al-balushi-en.docx · English DOCX',
     candidateId: 'cand-khalid',
-    filePath: '/issue-5302-inputs/02-khalid-al-balushi-en.docx',
+    filePath: '/issue-5302-inputs/02-khalid-al-balushi-en.html',
   },
   {
     id: 'pdf-scan',

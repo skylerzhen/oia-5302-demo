@@ -1,6 +1,8 @@
 import { CANDIDATES, PRIMARY_CANDIDATE_ID } from '../data/candidates'
 import { buildCvTextForMatching } from './cvProfileText'
 import { localAi, type LocalAiMode } from './localAi'
+import { cachedLlmMatch } from './llmRequestCache'
+import { profileFieldsKey } from './profileFieldsKey'
 import {
   applyLlmMatchToCandidate,
   rankCandidates,
@@ -35,27 +37,30 @@ export async function loadLlmMatches(fields: ProfileField[]): Promise<{
   matches: CandidateMatchWithTips[]
   mode: LocalAiMode | 'unavailable'
 }> {
-  const pool = buildCandidatePoolForMatching(fields)
+  const cacheKey = profileFieldsKey(fields)
+  return cachedLlmMatch(cacheKey, async () => {
+    const pool = buildCandidatePoolForMatching(fields)
 
-  try {
-    const result = await localAi.matchCandidates({ candidates: pool })
-    const byId = new Map(result.matches.map((m) => [m.candidateId, m]))
-    const matches = CANDIDATES
-      .map((candidate) => {
-        const llm = byId.get(candidate.id)
-        if (!llm) return null
-        return applyLlmMatchToCandidate(candidate, llm)
-      })
-      .filter((m): m is CandidateMatchWithTips => m !== null)
-      .sort((a, b) => b.totalScore - a.totalScore)
+    try {
+      const result = await localAi.matchCandidates({ candidates: pool })
+      const byId = new Map(result.matches.map((m) => [m.candidateId, m]))
+      const matches = CANDIDATES
+        .map((candidate) => {
+          const llm = byId.get(candidate.id)
+          if (!llm) return null
+          return applyLlmMatchToCandidate(candidate, llm)
+        })
+        .filter((m): m is CandidateMatchWithTips => m !== null)
+        .sort((a, b) => b.totalScore - a.totalScore)
 
-    return { matches, mode: result.mode }
-  } catch {
-    return {
-      matches: rankCandidates().map((m) => ({ ...m, improvementTips: [] })),
-      mode: 'unavailable',
+      return { matches, mode: result.mode }
+    } catch {
+      return {
+        matches: rankCandidates().map((m) => ({ ...m, improvementTips: [] })),
+        mode: 'unavailable',
+      }
     }
-  }
+  })
 }
 
 export function getPrimaryMatch(

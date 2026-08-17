@@ -90,7 +90,7 @@ function scoreCandidate(candidate: CandidateProfile): CandidateMatch {
     },
     {
       key: 'communication',
-      label: 'Stakeholder communication',
+      label: 'Arabic & English communication',
       weight: 20,
       test: () => ({
         matched: /communication|reporting|stakeholder|present/i.test(text),

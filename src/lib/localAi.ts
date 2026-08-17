@@ -84,6 +84,29 @@ export interface MatchCandidatesResult {
   matches: LlmMatchEntry[]
 }
 
+export interface LiveAvatarSessionResult {
+  sessionId: string
+  livekitUrl: string
+  livekitClientToken: string
+  mode: 'liveavatar-lite'
+}
+
+export interface LiveAvatarSpeakResult {
+  ok: boolean
+  sessionId: string
+  mode: 'liveavatar-lite'
+  text?: string
+}
+
+export interface HeyGenSpeakResult {
+  mode: 'heygen'
+  streamId: string
+  hlsUrl: string
+  avatarId?: string
+  text?: string
+  ttsProvider?: string
+}
+
 export interface LocalAiStatus {
   mode: LocalAiMode
   provider?: string
@@ -93,6 +116,7 @@ export interface LocalAiStatus {
     llm: boolean
     asr: boolean
     tts: boolean
+    avatar?: boolean
   }
   speech?: {
     tts: boolean
@@ -100,6 +124,12 @@ export interface LocalAiStatus {
     ttsProvider?: string
     asrProvider?: string
     visemeSource?: string
+    avatarProvider?: 'liveavatar' | 'heygen' | '2d'
+  }
+  avatar?: {
+    configured: boolean
+    avatarId?: string
+    mode?: string
   }
 }
 
@@ -117,17 +147,24 @@ function apiUrl(path: string) {
   return `${API_BASE}${path}`
 }
 
-async function post<T>(path: string, payload: object): Promise<T> {
-  const response = await window.fetch(apiUrl(path), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  })
-  if (!response.ok) {
-    const detail = await response.json().catch(() => ({})) as { error?: string }
-    throw new Error(detail.error ?? `Local AI request failed: ${response.status}`)
+async function post<T>(path: string, payload: object, timeoutMs = 30_000): Promise<T> {
+  const controller = new AbortController()
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const response = await window.fetch(apiUrl(path), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    })
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({})) as { error?: string }
+      throw new Error(detail.error ?? `Local AI request failed: ${response.status}`)
+    }
+    return response.json() as Promise<T>
+  } finally {
+    window.clearTimeout(timer)
   }
-  return response.json() as Promise<T>
 }
 
 export const localAi = {
@@ -169,4 +206,12 @@ export const localAi = {
   }) => post<{ mode: LocalAiMode; transcript: string; asrProvider?: string }>('/api/local-ai/asr/transcribe', payload),
   synthesize: (payload: { text: string }) =>
     post<TtsResult>('/api/local-ai/tts/synthesize', payload),
+  heygenSpeak: (payload: { text?: string; audioBase64?: string; mimeType?: string }) =>
+    post<HeyGenSpeakResult>('/api/heygen/speak', payload, 55_000),
+  liveavatarSessionStart: () =>
+    post<LiveAvatarSessionResult>('/api/liveavatar/session/start', {}, 45_000),
+  liveavatarSessionStop: (payload: { sessionId: string }) =>
+    post<{ ok: boolean }>('/api/liveavatar/session/stop', payload, 10_000),
+  liveavatarSpeak: (payload: { sessionId: string; text: string }) =>
+    post<LiveAvatarSpeakResult>('/api/liveavatar/speak', payload, 90_000),
 }

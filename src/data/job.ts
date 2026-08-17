@@ -9,6 +9,6 @@ export const FINANCE_JOB = {
     { key: 'excel', label: 'Financial modeling (Excel)', weight: 15 },
     { key: 'experience', label: 'Years in finance', weight: 15 },
     { key: 'education', label: 'Relevant degree', weight: 15 },
-    { key: 'communication', label: 'Stakeholder communication', weight: 20 },
+    { key: 'communication', label: 'Arabic & English communication', weight: 20 },
   ],
 }

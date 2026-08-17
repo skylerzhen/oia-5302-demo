@@ -13,6 +13,7 @@ const TARGET = path.join(ROOT, 'public/issue-5302-inputs')
 
 const documents = [
   ['01-sara-al-hinai-en.md', '01-sara-al-hinai-en.html'],
+  ['02-khalid-al-balushi-en.md', '02-khalid-al-balushi-en.html'],
   ['03-lina-al-abri-bilingual.md', '03-lina-al-abri-bilingual.html'],
   ['04-noor-al-hashmi-ar-scan.md', '04-noor-al-hashmi-ar-scan.html', true],
   ['05-yusuf-al-rashdi-en.md', '05-yusuf-al-rashdi-en.html'],

@@ -35,10 +35,3 @@ MSc Finance, Sultan Qaboos University
 
 Portfolio analysis · Risk reporting · Excel modelling · Variance analysis ·
 Arabic · English
-
-## Evidence anchors for demo
-
-- “Led quarterly portfolio variance analysis”
-- “Presented the risk impact and recommended action”
-- “Arabic and English board reporting packs”
-- “Excel forecasting models with documented assumptions”

@@ -55,7 +55,7 @@ export function Avatar2DInterviewer({
       </div>
 
       <div className="avatar-tech-note">
-        {expression} · anime portrait · PNGTuber lip-sync
+        {expression} · portrait interviewer · lip-sync
       </div>
     </div>
   )

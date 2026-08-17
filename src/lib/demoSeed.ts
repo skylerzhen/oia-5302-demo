@@ -7,7 +7,7 @@ import { buildInterviewFollowUp } from './matching'
 export function createDemoCandidateC4Patch(): Partial<DemoSession> {
   return {
     candidateStep: 'C4',
-    offline: true,
+    offline: false,
     fields: primaryCandidateProfileFields(),
     pipeline: {
       profileSubmitted: true,

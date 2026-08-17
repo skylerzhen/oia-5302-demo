@@ -11,6 +11,14 @@ import {
   handleSynthesize,
   handleTranscribe,
 } from './llm-handlers.mjs'
+import { handleHeyGenSpeak, handleHeyGenStatus } from './heygen-handlers.mjs'
+import {
+  handleLiveAvatarSessionStart,
+  handleLiveAvatarSessionStop,
+  handleLiveAvatarSpeak,
+  handleLiveAvatarStatus,
+} from './liveavatar-handlers.mjs'
+import { enforceRateLimit, BILLABLE_POST_ROUTES, GLOBAL_BILLABLE_LIMIT, LLM_RATE_LIMITS } from './rate-limit.mjs'
 
 loadEnv()
 
@@ -42,6 +50,12 @@ const routes = {
   'POST /api/local-ai/llm/match-candidates': async (req, res) => sendJson(res, 200, await handleMatchCandidates(await readJson(req))),
   'POST /api/local-ai/tts/synthesize': async (req, res) => sendJson(res, 200, await handleSynthesize(await readJson(req))),
   'POST /api/local-ai/asr/transcribe': async (req, res) => sendJson(res, 200, await handleTranscribe(await readJson(req))),
+  'GET /api/heygen/status': async (_req, res) => sendJson(res, 200, await handleHeyGenStatus()),
+  'POST /api/heygen/speak': async (req, res) => sendJson(res, 200, await handleHeyGenSpeak(await readJson(req), handleSynthesize)),
+  'GET /api/liveavatar/status': async (_req, res) => sendJson(res, 200, await handleLiveAvatarStatus()),
+  'POST /api/liveavatar/session/start': async (_req, res) => sendJson(res, 200, await handleLiveAvatarSessionStart()),
+  'POST /api/liveavatar/session/stop': async (req, res) => sendJson(res, 200, await handleLiveAvatarSessionStop(await readJson(req))),
+  'POST /api/liveavatar/speak': async (req, res) => sendJson(res, 200, await handleLiveAvatarSpeak(await readJson(req))),
 }
 
 createServer(async (req, res) => {
@@ -64,17 +78,26 @@ createServer(async (req, res) => {
   }
 
   try {
+    if (BILLABLE_POST_ROUTES.has(routeKey)) {
+      enforceRateLimit(req, '__global_billable__', GLOBAL_BILLABLE_LIMIT)
+    }
+    const limit = LLM_RATE_LIMITS[routeKey]
+    if (limit) enforceRateLimit(req, routeKey, limit)
     await handler(req, res)
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown server error'
-    sendJson(res, 500, { error: message })
+    const statusCode = message.startsWith('Rate limit exceeded') ? 429 : 500
+    sendJson(res, statusCode, { error: message })
   }
 }).listen(PORT, () => {
   const azure = Boolean(process.env.AZURE_SPEECH_KEY?.trim() && process.env.AZURE_SPEECH_REGION?.trim())
   const openaiTts = Boolean(process.env.OPENAI_API_KEY?.trim())
+  const heygen = Boolean(process.env.HEYGEN_API_KEY?.trim() && process.env.HEYGEN_AVATAR_ID?.trim())
+  const liveavatar = Boolean(process.env.LIVEAVATAR_API_KEY?.trim() && process.env.LIVEAVATAR_AVATAR_ID?.trim())
   const tts = azure ? 'azure' : openaiTts ? 'openai' : 'edge-neural'
+  const avatar = liveavatar ? 'liveavatar-lite' : heygen ? 'heygen' : '2d-fallback'
   const { provider, label } = getLlmConfig()
   console.log(`LLM API listening on http://127.0.0.1:${PORT}`)
   console.log(`LLM: ${label} (${provider})`)
-  console.log(`Speech: TTS=${tts} ASR=${azure ? 'azure' : 'browser'} viseme=${azure ? 'azure-sdk' : 'estimated'}`)
+  console.log(`Speech: TTS=${tts} ASR=${azure ? 'azure' : 'browser'} avatar=${avatar}`)
 })

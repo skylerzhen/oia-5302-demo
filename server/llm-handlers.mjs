@@ -1,6 +1,8 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { resolveCvSourceText } from './cv-sources.mjs'
+import { heygenAvailability } from './heygen-handlers.mjs'
+import { liveAvatarAvailability } from './liveavatar-handlers.mjs'
 import { chatJson, chatText, getLlmConfig } from './llm-client.mjs'
 import { handleSynthesize, handleTranscribe, speechAvailability } from './speech-handlers.mjs'
 
@@ -32,6 +34,13 @@ function normalizeCvFields(rawFields) {
 export async function handleStatus() {
   const { available, provider, label } = getLlmConfig()
   const speech = speechAvailability()
+  const heygen = heygenAvailability()
+  const liveavatar = liveAvatarAvailability()
+  const avatarProvider = liveavatar.configured
+    ? 'liveavatar'
+    : heygen.configured
+      ? 'heygen'
+      : '2d'
   return {
     mode: available ? 'model' : 'adapter-fallback',
     provider,
@@ -41,8 +50,14 @@ export async function handleStatus() {
       llm: available,
       asr: speech.asr,
       tts: speech.tts,
+      avatar: liveavatar.configured || heygen.configured,
     },
-    speech,
+    speech: {
+      ...speech,
+      avatarProvider,
+    },
+    avatar: liveavatar.configured ? liveavatar : heygen,
+    liveavatar,
   }
 }
 
@@ -54,9 +69,9 @@ export async function handleParseCv(body) {
     throw new Error('No CV source text available for LLM parsing')
   }
 
-  const { model } = getLlmConfig()
+  const { fastModel } = getLlmConfig()
   const parsed = await chatJson({
-    model,
+    model: fastModel,
     system: `You extract structured candidate profile fields from CV text for an OIA recruitment demo.
 Return JSON with shape:
 {
@@ -103,6 +118,15 @@ Return only the question text, no quotes or preamble.`,
   return { mode: 'model', text }
 }
 
+function trimPriorTurns(priorTurns, limit = 4) {
+  const turns = Array.isArray(priorTurns) ? priorTurns : []
+  return turns.slice(-limit).map((turn) => ({
+    speaker: turn.speaker,
+    language: turn.language,
+    text: String(turn.text ?? '').slice(0, 400),
+  }))
+}
+
 export async function handleFollowUp(body) {
   const { fastModel } = getLlmConfig()
   const answer = String(body.answer ?? '').trim()
@@ -110,15 +134,13 @@ export async function handleFollowUp(body) {
 
   const text = await chatText({
     model: fastModel,
-    maxTokens: 120,
-    system: `You are an OIA AI interviewer conducting a live interview.
-Write one short follow-up question in English (max 2 sentences).
-Reference something specific from the candidate answer.
-Return only the question.`,
+    maxTokens: 64,
+    temperature: 0.3,
+    system: `OIA senior financial analyst interview. Reply with ONE short English follow-up question (max 18 words).
+Reference a concrete detail from the latest answer. No preamble.`,
     user: JSON.stringify({
-      answer,
-      priorTurns: body.priorTurns ?? [],
-      jobDescription: body.jobDescription ?? loadJobDescription(),
+      answer: answer.slice(0, 1200),
+      priorTurns: trimPriorTurns(body.priorTurns),
     }),
   })
 
@@ -133,7 +155,7 @@ function normalizeMatchDimensions(rawDimensions) {
     { key: 'excel', label: 'Financial modeling (Excel)', weight: 15 },
     { key: 'experience', label: 'Years in finance', weight: 15 },
     { key: 'education', label: 'Relevant degree', weight: 15 },
-    { key: 'communication', label: 'Stakeholder communication', weight: 20 },
+    { key: 'communication', label: 'Arabic & English communication', weight: 20 },
   ]
 
   const incoming = Array.isArray(rawDimensions) ? rawDimensions : []
@@ -189,10 +211,10 @@ export async function handleMatchCandidates(body) {
   if (candidates.length === 0) throw new Error('At least one candidate profile is required')
 
   const jobDescription = body.jobDescription ?? loadJobDescription()
-  const { model } = getLlmConfig()
+  const { fastModel } = getLlmConfig()
 
   const parsed = await chatJson({
-    model,
+    model: fastModel,
     system: `You are an OIA recruitment matching engine for a Senior Financial Analyst role.
 Score each candidate CV against the job description rubric.
 Return JSON:
@@ -248,12 +270,12 @@ Rules:
 }
 
 export async function handleGenerateAssessment(body) {
-  const { model } = getLlmConfig()
+  const { fastModel } = getLlmConfig()
   const turns = Array.isArray(body.turns) ? body.turns : []
   if (turns.length === 0) throw new Error('Interview turns are required')
 
   const parsed = await chatJson({
-    model,
+    model: fastModel,
     system: `You evaluate a candidate interview for an OIA HR demo.
 Return JSON:
 {

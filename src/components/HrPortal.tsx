@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Download, UserCheck, UserX, Zap } from 'lucide-react'
 import { useDemo } from '../context/DemoContext'
 import { EvidenceModal } from './EvidenceModal'
@@ -6,6 +6,7 @@ import { SourceDocumentModal } from './SourceDocumentModal'
 import { EvaluationReportPanel } from './EvaluationReportPanel'
 import { InterviewReviewPanel } from './InterviewReviewPanel'
 import { Layout } from './Layout'
+import { AuditTrailTable } from './AuditTrailTable'
 import { MatchDashboard } from './MatchDashboard'
 import { PRIMARY_CANDIDATE_ID } from '../data/candidates'
 import { FINANCE_JOB } from '../data/job'
@@ -13,6 +14,8 @@ import { HR_STEPS } from '../lib/demo'
 import { localAi, type AssessmentResult } from '../lib/localAi'
 import { rankCandidates, type CandidateMatchWithTips } from '../lib/matching'
 import { loadLlmMatches } from '../lib/llmMatching'
+import { buildAssessmentKey, cachedLlmAssessment } from '../lib/llmRequestCache'
+import { profileFieldsKey } from '../lib/profileFieldsKey'
 import type { HrStepId } from '../types'
 
 export function HrPortal() {
@@ -24,7 +27,7 @@ export function HrPortal() {
     finalReason, setFinalReason,
     hrStep: step, setHrStep: setStep, logout, seedDemoForHr,
     offline, setOffline,
-    fields,
+    fields, auditLog,
   } = useDemo()
 
   const [selectedId, setSelectedId] = useState(PRIMARY_CANDIDATE_ID)
@@ -38,8 +41,6 @@ export function HrPortal() {
   const [assessmentError, setAssessmentError] = useState('')
   const [matches, setMatches] = useState<CandidateMatchWithTips[]>(() => rankCandidates())
   const [matchLoading, setMatchLoading] = useState(false)
-  const [matchMode, setMatchMode] = useState<'model' | 'adapter-fallback' | 'browser' | 'unavailable'>('unavailable')
-  const [matchError, setMatchError] = useState('')
 
   const matchesMemo = matches
   const filtered = matchesMemo.filter((m) => {
@@ -51,21 +52,27 @@ export function HrPortal() {
 
   const selected = matchesMemo.find((m) => m.candidateId === selectedId) ?? matchesMemo[0]
   const readyForInterviewReview = pipeline.interviewCompleted || interviewTurns.length > 0
+  const fieldsKey = useMemo(() => profileFieldsKey(fields), [fields])
+  const assessmentKey = useMemo(
+    () => buildAssessmentKey({
+      assessmentScore,
+      matchScore: selected.totalScore,
+      turns: interviewTurns,
+    }),
+    [assessmentScore, interviewTurns, selected.totalScore],
+  )
 
   useEffect(() => {
     let active = true
     setMatchLoading(true)
-    setMatchError('')
     loadLlmMatches(fields)
       .then(({ matches: next, mode }) => {
         if (!active) return
         setMatches(next)
-        setMatchMode(mode)
         log('System', 'LLM CV–JD pool ranked', `${next.length} candidates · mode ${mode}`, 'H1')
       })
       .catch((error: Error) => {
         if (!active) return
-        setMatchError(error.message)
         setMatches(rankCandidates())
         log('System', 'LLM match pool failed', error.message, 'H1')
       })
@@ -74,7 +81,7 @@ export function HrPortal() {
       })
 
     return () => { active = false }
-  }, [fields, log])
+  }, [fieldsKey])
 
   useEffect(() => {
     if (!readyForInterviewReview || interviewTurns.length === 0) {
@@ -85,12 +92,12 @@ export function HrPortal() {
     let active = true
     setAssessmentLoading(true)
     setAssessmentError('')
-    localAi.generateAssessment({
+    cachedLlmAssessment(assessmentKey, () => localAi.generateAssessment({
       turns: interviewTurns,
       assessmentScore,
       matchScore: selected.totalScore,
       jobTitle: FINANCE_JOB.title,
-    })
+    }))
       .then((report) => {
         if (!active) return
         setInterviewReport(report)
@@ -107,7 +114,7 @@ export function HrPortal() {
       })
 
     return () => { active = false }
-  }, [assessmentScore, interviewTurns, log, readyForInterviewReview, selected.totalScore])
+  }, [assessmentKey, readyForInterviewReview])
 
   useEffect(() => {
     if (!readyForInterviewReview) {
@@ -183,7 +190,7 @@ export function HrPortal() {
           <header className="section-head dashboard-head">
             <div>
               <h1>H1 · Matching dashboard</h1>
-              <p>{FINANCE_JOB.title} · LLM CV–JD rubric ({matchMode}) · evidence drill-down · candidate pool from simulated Jadarah read (I1)</p>
+              <p>{FINANCE_JOB.title} · LLM CV–JD rubric · evidence drill-down · candidate pool from simulated Jadarah read (I1)</p>
             </div>
             {!readyForInterviewReview && (
               <button type="button" className="primary" onClick={seedDemoForHr}>
@@ -192,7 +199,6 @@ export function HrPortal() {
             )}
           </header>
           {matchLoading && <p className="muted" role="status">LLM is scoring candidates against the job description…</p>}
-          {matchError && <p className="danger-text">{matchError}</p>}
           <div className="filters card">
             <input placeholder="Filter: skill (e.g. portfolio)" value={filters.skill} onChange={(e) => setFilters({ ...filters, skill: e.target.value })} />
             <input type="number" placeholder="Min years" value={filters.minYears || ''} onChange={(e) => setFilters({ ...filters, minYears: Number(e.target.value) || 0 })} />
@@ -308,6 +314,7 @@ export function HrPortal() {
             </ul>
             <p className="muted tiny">Production: live Jadarah + Oracle EBS · on-prem models · production ASR/TTS · lip-sync avatar</p>
           </div>
+          <AuditTrailTable entries={auditLog} />
         </section>
       )}
 

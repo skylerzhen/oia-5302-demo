@@ -5,6 +5,13 @@ const apiUrl = (process.argv[2] ?? process.env.VITE_LLM_API_URL ?? DEFAULT_API_U
 
 console.log(`Building frontend with VITE_LLM_API_URL=${apiUrl}`)
 
+// Surge build needs devDependencies (tsc, vite). Render uses --omit=dev only on the API host.
+const install = spawnSync('npm', ['install'], {
+  stdio: 'inherit',
+  env: process.env,
+})
+if (install.status !== 0) process.exit(install.status ?? 1)
+
 const build = spawnSync('npm', ['run', 'build'], {
   stdio: 'inherit',
   env: { ...process.env, VITE_LLM_API_URL: apiUrl },
