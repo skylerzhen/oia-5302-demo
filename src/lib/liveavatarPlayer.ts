@@ -7,43 +7,217 @@ export interface LiveAvatarCredentials {
   livekitClientToken: string
 }
 
-let sharedVideo: HTMLVideoElement | null = null
+const API_BASE = import.meta.env.VITE_LLM_API_URL?.replace(/\/$/, '') ?? ''
+
+let videoEl: HTMLVideoElement | null = null
+let audioEl: HTMLAudioElement | null = null
 let session: LiveAvatarCredentials | null = null
 let room: Room | null = null
 let connectPromise: Promise<boolean> | null = null
+let lastError: string | null = null
+let lifecycleInstalled = false
+
+export function getLiveAvatarLastError() {
+  return lastError
+}
 
 export function setLiveAvatarVideoElement(element: HTMLVideoElement | null) {
-  sharedVideo = element
+  videoEl = element
+  if (element && session) {
+    void connectRoom(session).catch(() => undefined)
+  }
 }
 
 export function getLiveAvatarVideoElement() {
-  return sharedVideo
+  return videoEl
 }
 
 export function getLiveAvatarSessionId() {
   return session?.sessionId ?? null
 }
 
-export function getLiveAvatarCredentials() {
-  return session
+function ensureAudioElement() {
+  if (typeof document === 'undefined') return null
+  if (!audioEl) {
+    audioEl = document.createElement('audio')
+    audioEl.autoplay = true
+    audioEl.style.display = 'none'
+    document.body.appendChild(audioEl)
+  }
+  return audioEl
 }
 
-async function connectLiveKit(credentials: LiveAvatarCredentials) {
-  if (!sharedVideo) return false
-  if (room?.state === 'connected') return true
+/** Call on user gesture so LiveKit audio can autoplay later. */
+export function primeLiveAvatarAudioPlayback() {
+  if (videoEl) {
+    videoEl.muted = false
+    videoEl.volume = 1
+    void videoEl.play().catch(() => undefined)
+  }
+  const audio = ensureAudioElement()
+  if (audio) {
+    audio.muted = false
+    audio.volume = 1
+    void audio.play().catch(() => undefined)
+  }
+}
+
+function attachTrack(track: Track) {
+  if (track.kind === Track.Kind.Video && videoEl) {
+    track.attach(videoEl)
+    primeLiveAvatarAudioPlayback()
+    return
+  }
+  if (track.kind === Track.Kind.Audio) {
+    const audio = ensureAudioElement()
+    if (audio) {
+      track.attach(audio)
+      primeLiveAvatarAudioPlayback()
+    }
+  }
+}
+
+function attachAllRemoteTracks(targetRoom: Room) {
+  for (const participant of targetRoom.remoteParticipants.values()) {
+    for (const publication of participant.trackPublications.values()) {
+      if (publication.track) attachTrack(publication.track)
+    }
+  }
+}
+
+function wireRoomEvents(targetRoom: Room) {
+  targetRoom.on(RoomEvent.TrackSubscribed, (track) => attachTrack(track))
+  targetRoom.on(RoomEvent.TrackPublished, (publication) => {
+    if (publication.track) attachTrack(publication.track)
+  })
+}
+
+async function connectRoom(credentials: LiveAvatarCredentials): Promise<boolean> {
+  if (!videoEl) return false
+
+  if (room?.state === 'connected') {
+    attachAllRemoteTracks(room)
+    primeLiveAvatarAudioPlayback()
+    return true
+  }
+
+  if (room) {
+    try {
+      room.disconnect()
+    } catch {
+      // ignore
+    }
+    room = null
+  }
 
   const nextRoom = new Room({ adaptiveStream: true, dynacast: true })
   room = nextRoom
+  wireRoomEvents(nextRoom)
 
-  nextRoom.on(RoomEvent.TrackSubscribed, (track) => {
-    if (track.kind === Track.Kind.Video && sharedVideo) {
-      track.attach(sharedVideo)
-      void sharedVideo.play().catch(() => undefined)
+  try {
+    await nextRoom.connect(credentials.livekitUrl, credentials.livekitClientToken)
+    attachAllRemoteTracks(nextRoom)
+    primeLiveAvatarAudioPlayback()
+    return true
+  } catch (error) {
+    lastError = error instanceof Error ? error.message : 'LiveKit connect failed'
+    return false
+  }
+}
+
+function beaconStopSession(sessionId: string) {
+  if (!API_BASE || !sessionId) return
+  try {
+    navigator.sendBeacon(
+      `${API_BASE}/api/liveavatar/session/stop`,
+      new Blob([JSON.stringify({ sessionId })], { type: 'application/json' }),
+    )
+  } catch {
+    // ignore
+  }
+}
+
+export function installLiveAvatarLifecycleGuards() {
+  if (lifecycleInstalled || typeof window === 'undefined') return
+  lifecycleInstalled = true
+
+  window.addEventListener('pagehide', () => {
+    const sessionId = session?.sessionId
+    if (!sessionId) return
+    beaconStopSession(sessionId)
+    try {
+      room?.disconnect()
+    } catch {
+      // ignore
     }
+    session = null
+    room = null
+    connectPromise = null
   })
 
-  await nextRoom.connect(credentials.livekitUrl, credentials.livekitClientToken)
-  return true
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden' && session?.sessionId) {
+      void stopLiveAvatarSession()
+    }
+  })
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function waitForFirstVideoFrame(timeoutMs: number) {
+  if (videoEl?.videoWidth) return true
+
+  return new Promise<boolean>((resolve) => {
+    const video = videoEl
+    if (!video) {
+      resolve(false)
+      return
+    }
+
+    const done = (ok: boolean) => {
+      clearTimeout(timer)
+      video.removeEventListener('loadeddata', onFrame)
+      video.removeEventListener('playing', onFrame)
+      resolve(ok)
+    }
+
+    const onFrame = () => {
+      if (video.videoWidth > 0) done(true)
+    }
+
+    const timer = window.setTimeout(() => done(video.videoWidth > 0), timeoutMs)
+    video.addEventListener('loadeddata', onFrame)
+    video.addEventListener('playing', onFrame)
+    onFrame()
+  })
+}
+
+/** Session + LiveKit video ready before speak (avoids burning credits on a dead stream). */
+export async function prepareLiveAvatarForSpeech(timeoutMs = 20_000): Promise<boolean> {
+  lastError = null
+  const deadline = Date.now() + timeoutMs
+
+  while (Date.now() < deadline) {
+    if (!videoEl) {
+      await sleep(50)
+      continue
+    }
+
+    const sessionOk = await ensureLiveAvatarSession()
+    if (!sessionOk) return false
+
+    if (videoEl.videoWidth > 0) return true
+
+    await waitForFirstVideoFrame(Math.min(2_000, deadline - Date.now()))
+    if (videoEl.videoWidth > 0) return true
+
+    await sleep(150)
+  }
+
+  lastError = 'LiveAvatar video not ready'
+  return false
 }
 
 export async function ensureLiveAvatarSession(): Promise<boolean> {
@@ -51,18 +225,30 @@ export async function ensureLiveAvatarSession(): Promise<boolean> {
   if (connectPromise) return connectPromise
 
   connectPromise = (async () => {
+    lastError = null
     try {
-      const started = await localAi.liveavatarSessionStart()
-      session = {
-        sessionId: started.sessionId,
-        livekitUrl: started.livekitUrl,
-        livekitClientToken: started.livekitClientToken,
+      if (!session) {
+        const started = await localAi.liveavatarSessionStart()
+        session = {
+          sessionId: started.sessionId,
+          livekitUrl: started.livekitUrl,
+          livekitClientToken: started.livekitClientToken,
+        }
       }
-      if (!sharedVideo) return true
-      await connectLiveKit(session)
+      if (videoEl) {
+        const connected = await connectRoom(session)
+        if (!connected) return false
+      }
       return true
-    } catch {
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : 'LiveAvatar session failed'
       session = null
+      try {
+        room?.disconnect()
+      } catch {
+        // ignore
+      }
+      room = null
       return false
     } finally {
       connectPromise = null
@@ -76,6 +262,7 @@ export async function stopLiveAvatarSession() {
   const sessionId = session?.sessionId
   session = null
   connectPromise = null
+  lastError = null
 
   try {
     room?.disconnect()
@@ -90,6 +277,10 @@ export async function stopLiveAvatarSession() {
 }
 
 export async function reconnectLiveAvatarVideo() {
-  if (!session || !sharedVideo) return
-  await connectLiveKit(session)
+  if (!session || !videoEl) return false
+  return connectRoom(session)
+}
+
+export function liveAvatarVideoReady() {
+  return Boolean(videoEl && videoEl.videoWidth > 0)
 }

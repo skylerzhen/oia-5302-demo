@@ -8,6 +8,7 @@ interface AvatarPanelProps {
   expression?: 'neutral' | 'supportive' | 'curious' | 'gesture'
   viseme?: import('../types').Viseme
   avatarMode?: '2d' | 'heygen' | 'liveavatar'
+  liveAvatarSessionActive?: boolean
 }
 
 export function AvatarPanel({
@@ -15,6 +16,7 @@ export function AvatarPanel({
   caption,
   expression = 'neutral',
   avatarMode = '2d',
+  liveAvatarSessionActive = false,
 }: AvatarPanelProps) {
   const digitalMode = avatarMode === 'heygen' || avatarMode === 'liveavatar'
 
@@ -24,9 +26,13 @@ export function AvatarPanel({
         <span className="live-tag">{speaking ? 'Speaking' : 'AI Interviewer'}</span>
 
         <div className="avatar-2d-wrap">
-          <Avatar2DInterviewer speaking={speaking && !digitalMode} expression={expression} />
+          {!digitalMode && (
+            <Avatar2DInterviewer speaking={speaking} expression={expression} />
+          )}
           {avatarMode === 'heygen' && <HeyGenAvatarVideo active={speaking} />}
-          {avatarMode === 'liveavatar' && <LiveAvatarStage active={speaking} />}
+          {avatarMode === 'liveavatar' && (
+            <LiveAvatarStage active={speaking} sessionActive={liveAvatarSessionActive} />
+          )}
         </div>
       </div>
 

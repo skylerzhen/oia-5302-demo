@@ -14,7 +14,7 @@ import { MCQ_QUESTIONS, INTERVIEW_PRESET } from '../data/questions'
 import { CANDIDATE_STEPS } from '../lib/demo'
 import { localAi, type TtsResult } from '../lib/localAi'
 import { preloadSpeechVoices, setHeyGenAvatarEnabled, setLiveAvatarEnabled, speakInterviewLine, warmInterviewSpeech } from '../lib/voiceSpeak'
-import { ensureLiveAvatarSession, stopLiveAvatarSession } from '../lib/liveavatarPlayer'
+import { installLiveAvatarLifecycleGuards, primeLiveAvatarAudioPlayback, stopLiveAvatarSession } from '../lib/liveavatarPlayer'
 import { unlockAudioPlayback } from '../lib/audioUnlock'
 import { avatarLipSyncBus } from '../lib/avatarLipSyncBus'
 import { controlledViewUrl } from '../lib/controlledDocUrl'
@@ -49,6 +49,7 @@ export function CandidatePortal() {
 
   const [uploadedSamples, setUploadedSamples] = useState<string[]>([])
   const [draftSaved, setDraftSaved] = useState(false)
+  const [fieldsConfirmed, setFieldsConfirmed] = useState(false)
   const [mcqAnswers, setMcqAnswers] = useState<Record<string, number>>({})
   const [examSubmitted, setExamSubmitted] = useState(false)
   const [examBreakdown, setExamBreakdown] = useState<{ id: string; correct: boolean }[]>([])
@@ -171,12 +172,24 @@ export function CandidatePortal() {
   }, [step])
 
   useEffect(() => {
-    if (step !== 'C4' || avatarMode !== 'liveavatar') return
-    void ensureLiveAvatarSession()
+    if (avatarMode !== 'liveavatar') return
+    installLiveAvatarLifecycleGuards()
+  }, [avatarMode])
+
+  useEffect(() => {
+    if (step !== 'C4' || avatarMode !== 'liveavatar') {
+      if (avatarMode === 'liveavatar') void stopLiveAvatarSession()
+      return
+    }
     return () => {
       void stopLiveAvatarSession()
     }
   }, [step, avatarMode])
+
+  useEffect(() => {
+    if (!pipeline.interviewCompleted || avatarMode !== 'liveavatar') return
+    void stopLiveAvatarSession()
+  }, [pipeline.interviewCompleted, avatarMode])
 
   useEffect(() => {
     preloadSpeechVoices()
@@ -266,6 +279,7 @@ export function CandidatePortal() {
     if (!parsePreview) return
     const nextFields = applyParsedFields(emptyProfileFields(), parsePreview.fields)
     setFields(nextFields)
+    setFieldsConfirmed(false)
     setScanImported(parsePreview.isScannedPdf)
     setProfileFromCv(true)
     setUploadedSamples((current) => (
@@ -363,7 +377,9 @@ export function CandidatePortal() {
       text: followUp,
       expression: 'curious',
     }
-    const ttsPromise = localAi.synthesize({ text: followUp })
+    const ttsPromise = avatarMode === 'liveavatar'
+      ? Promise.resolve(null)
+      : localAi.synthesize({ text: followUp })
     setInterviewTurns((prev) => [...prev, turn])
     setAvatarCaption(followUp)
     setAvatarExpression('curious')
@@ -389,21 +405,19 @@ export function CandidatePortal() {
   }
 
   function confirmAllFields() {
-    setFields((prev) => prev.map((f) => {
-      const value = f.key === 'certification' && !f.value.trim() ? 'CFA Level II (candidate)' : f.value
-      return {
-        ...f,
-        value,
-        status: value.trim() ? 'parsed' as const : f.status,
-      }
-    }))
-    log('Candidate', 'Fields confirmed', 'All parsed fields accepted for submission', 'C1')
+    setFields((prev) => prev.map((f) => ({
+      ...f,
+      status: f.value.trim() ? f.status : 'missing' as const,
+    })))
+    setFieldsConfirmed(true)
+    log('Candidate', 'Fields confirmed', 'Parsed values accepted; missing fields left blank', 'C1')
   }
 
   const canSubmitProfile =
     profileFromCv &&
     uploadedSamples.length > 0 &&
-    fields.every((f) => f.value.trim() && f.status !== 'missing')
+    fieldsConfirmed &&
+    fields.filter((f) => f.status !== 'missing').every((f) => f.value.trim())
 
   const steps = CANDIDATE_STEPS.map((s) => {
     const locked =
@@ -568,7 +582,10 @@ export function CandidatePortal() {
                           </div>
                           <input
                             value={field.value}
-                            onChange={(e) => setFields((prev) => prev.map((f) => f.key === field.key ? { ...f, value: e.target.value, status: e.target.value ? 'parsed' : 'missing' } : f))}
+                            onChange={(e) => {
+                              setFieldsConfirmed(false)
+                              setFields((prev) => prev.map((f) => f.key === field.key ? { ...f, value: e.target.value, status: e.target.value ? 'parsed' : 'missing' } : f))
+                            }}
                           />
                           <button type="button" className="linkish" onClick={() => setEvidenceModal({ title: field.label, evidence: field.evidence, source: field.source })}>Evidence</button>
                         </label>
@@ -589,7 +606,7 @@ export function CandidatePortal() {
                       </button>
                     </div>
                     {!canSubmitProfile && (
-                      <p className="muted tiny">Fill any missing fields (or click Confirm all fields), then submit.</p>
+                      <p className="muted tiny">Click Confirm all fields to accept parsed values, then review. Missing fields stay blank until you fill them manually.</p>
                     )}
                     {draftSaved && <p className="ok-text">Draft saved.</p>}
                   </div>
@@ -766,21 +783,32 @@ export function CandidatePortal() {
                   caption={avatarCaption || 'Start when ready'}
                   viseme={avatarSpeaking ? avatarViseme : undefined}
                   avatarMode={avatarMode}
+                  liveAvatarSessionActive={interviewStarted && avatarMode === 'liveavatar'}
                 />
                 <div className="card stack">
                   {llmBusy && (
                     <div className="interview-loading" role="status" aria-live="polite">
                       <span className="interview-loading-spinner" aria-hidden="true" />
-                      <span>{interviewLoadingMessage(interviewStarted, interviewPhase, interviewTurns.length)}</span>
+                      <span>{interviewLoadingMessage(interviewStarted, interviewPhase, interviewTurns.length, avatarMode === 'liveavatar')}</span>
                     </div>
                   )}
                   {!interviewStarted ? (
                     <button type="button" className="primary" disabled={llmBusy} onClick={() => {
                       unlockAudioPlayback()
+                      if (avatarMode === 'liveavatar') primeLiveAvatarAudioPlayback()
                       void runLlmInterviewAction(async () => {
-                        setInterviewStarted(true)
                         const openingQuestion = INTERVIEW_PRESET[0].text
-                        await speakAvatar({ id: nextTurnId('g'), speaker: 'avatar', language: 'en', text: openingQuestion, expression: 'neutral' })
+                        setInterviewStarted(true)
+                        await new Promise<void>((resolve) => {
+                          requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+                        })
+                        await speakAvatar({
+                          id: nextTurnId('g'),
+                          speaker: 'avatar',
+                          language: 'en',
+                          text: openingQuestion,
+                          expression: 'neutral',
+                        })
                       })
                     }}><Play size={16} /> Start interview</button>
                   ) : (
@@ -813,6 +841,7 @@ export function CandidatePortal() {
                             asrProvider={speechStatus.asr}
                             onSubmit={() => {
                               unlockAudioPlayback()
+                              if (avatarMode === 'liveavatar') primeLiveAvatarAudioPlayback()
                               const ans = candidateAnswerEn.trim()
                               void (async () => {
                                 setLlmError('')
@@ -931,8 +960,10 @@ function interviewLoadingMessage(
   interviewStarted: boolean,
   phase: InterviewUiPhase,
   turnCount: number,
+  liveAvatarMode: boolean,
 ): string {
-  if (!interviewStarted || turnCount === 0) return 'Generating opening question…'
+  if (!interviewStarted) return liveAvatarMode ? 'Connecting LiveAvatar video…' : 'Preparing interview…'
+  if (turnCount === 0) return liveAvatarMode ? 'Connecting LiveAvatar video…' : 'Generating opening question…'
   if (phase === 'english_answer') return 'Thinking…'
   return 'AI is preparing the next step…'
 }

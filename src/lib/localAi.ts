@@ -96,6 +96,9 @@ export interface LiveAvatarSpeakResult {
   sessionId: string
   mode: 'liveavatar-lite'
   text?: string
+  audioBase64?: string
+  mimeType?: string
+  sampleRate?: number
 }
 
 export interface HeyGenSpeakResult {

@@ -908,6 +908,37 @@ textarea {
   opacity: 1;
 }
 
+.liveavatar-stage {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: #0a1628;
+}
+
+.liveavatar-stage-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  padding: 1rem;
+  text-align: center;
+  color: #d7e6ff;
+  background: linear-gradient(180deg, rgba(10, 22, 40, 0.92), rgba(10, 22, 40, 0.98));
+}
+
+.liveavatar-stage-overlay.idle {
+  background: linear-gradient(180deg, rgba(10, 22, 40, 0.88), rgba(10, 22, 40, 0.96));
+}
+
+.liveavatar-stage-overlay strong {
+  color: #fff;
+  font-size: 0.95rem;
+}
+
 .liveavatar-avatar-video {
   position: absolute;
   inset: 0;
@@ -916,13 +947,8 @@ textarea {
   object-fit: cover;
   object-position: center top;
   z-index: 2;
-  opacity: 0;
-  transition: opacity 180ms ease;
-  background: #0a1628;
-}
-
-.liveavatar-avatar-video.active {
   opacity: 1;
+  background: #0a1628;
 }
 
 .avatar2d-stage {

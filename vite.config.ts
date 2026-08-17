@@ -3,12 +3,17 @@ import react from '@vitejs/plugin-react'
 
 function cloudConnectSrc() {
   const apiUrl = process.env.VITE_LLM_API_URL?.trim()
-  if (!apiUrl) return `'self'`
+  const liveKit = 'wss://*.livekit.cloud https://*.livekit.cloud wss://webrtc-signaling.heygen.io'
+  if (!apiUrl) return `'self' ${liveKit}`
   try {
-    return `'self' ${new URL(apiUrl).origin}`
+    return `'self' ${new URL(apiUrl).origin} ${liveKit}`
   } catch {
-    return `'self'`
+    return `'self' ${liveKit}`
   }
+}
+
+function cloudMediaSrc() {
+  return `'self' blob: data:`
 }
 
 // https://vite.dev/config/
@@ -19,10 +24,10 @@ export default defineConfig({
       name: 'inject-cloud-csp',
       transformIndexHtml(html) {
         const connectSrc = cloudConnectSrc()
-        return html.replace(
-          /connect-src 'self'/,
-          `connect-src ${connectSrc}`,
-        )
+        const mediaSrc = cloudMediaSrc()
+        return html
+          .replace(/connect-src 'self'/, `connect-src ${connectSrc}`)
+          .replace(/media-src 'self' data:/, `media-src ${mediaSrc}`)
       },
     },
   ],

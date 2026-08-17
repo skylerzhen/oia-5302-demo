@@ -7,7 +7,7 @@ import { isOpeningPresetText, OPENING_AUDIO_URL } from './demoAudio'
 import { synthesizeEdgeTtsBrowser } from './edgeTtsClient'
 import { unlockAudioPlayback, getSharedAudioContext } from './audioUnlock'
 import { getHeyGenVideoElement, playHeyGenHls } from './heygenPlayer'
-import { ensureLiveAvatarSession, getLiveAvatarSessionId } from './liveavatarPlayer'
+import { getLiveAvatarSessionId, prepareLiveAvatarForSpeech, primeLiveAvatarAudioPlayback } from './liveavatarPlayer'
 import {
   marksFromTts,
   runAudioSyncedLipSync,
@@ -241,10 +241,9 @@ async function speakWithLiveAvatar(text: string, signal?: AbortSignal): Promise<
   if (!liveAvatarEnabled) return false
 
   try {
-    if (!getLiveAvatarSessionId()) {
-      const ready = await ensureLiveAvatarSession()
-      if (!ready) return false
-    }
+    primeLiveAvatarAudioPlayback()
+    const ready = await prepareLiveAvatarForSpeech(20_000)
+    if (!ready) return false
 
     const sessionId = getLiveAvatarSessionId()
     if (!sessionId) return false
@@ -260,6 +259,30 @@ async function speakWithLiveAvatar(text: string, signal?: AbortSignal): Promise<
     avatarLipSyncBus.set({ viseme: 'rest', jawOpen: 0, speaking: false })
     return false
   }
+}
+
+async function speakLiveAvatarFallback(
+  text: string,
+  prefetchedTts: TtsResult | null | undefined,
+  signal?: AbortSignal,
+): Promise<string> {
+  const fallbackTts = prefetchedTts ?? await fetchServerTts(text, signal)
+  const marks = fallbackTts?.visemeMarks?.length
+    ? fallbackTts.visemeMarks
+    : marksFromTts(text, 'en', estimateDurationMs(text))
+
+  if (fallbackTts?.audioBase64) {
+    await speakWithAudio(
+      fallbackTts.audioBase64,
+      fallbackTts.mimeType ?? 'audio/mpeg',
+      marks,
+      signal,
+    )
+    return fallbackTts.ttsProvider === 'openai' ? 'openai-fallback' : 'tts-fallback'
+  }
+  if (await speakWithClientEdgeTts(text, signal)) return 'edge-fallback'
+  await speakWithBrowser(text, signal)
+  return 'browser-fallback'
 }
 
 async function speakWithHeyGen(
@@ -312,7 +335,9 @@ export async function speakInterviewLine(options: {
   try {
     unlockAudioPlayback()
 
-    if (isOpeningPresetText(text)) {
+    const digitalAvatar = liveAvatarEnabled || heygenAvatarEnabled
+
+    if (!digitalAvatar && isOpeningPresetText(text)) {
       try {
         await speakFromCachedUrl(OPENING_AUDIO_URL, text, signal)
         return 'cached'
@@ -321,11 +346,15 @@ export async function speakInterviewLine(options: {
       }
     }
 
-    const resolvedTts = prefetchedTts ?? await fetchServerTts(text, signal)
-
-    if (await speakWithLiveAvatar(text, signal)) {
-      return 'liveavatar'
+    if (liveAvatarEnabled) {
+      primeLiveAvatarAudioPlayback()
+      if (await speakWithLiveAvatar(text, signal)) {
+        return 'liveavatar'
+      }
+      return speakLiveAvatarFallback(text, prefetchedTts, signal)
     }
+
+    const resolvedTts = prefetchedTts ?? await fetchServerTts(text, signal)
 
     if (await speakWithHeyGen(text, resolvedTts, signal)) {
       return 'heygen'

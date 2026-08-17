@@ -1,17 +1,23 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
-  getLiveAvatarCredentials,
+  ensureLiveAvatarSession,
+  getLiveAvatarLastError,
   reconnectLiveAvatarVideo,
   setLiveAvatarVideoElement,
 } from '../lib/liveavatarPlayer'
 
 interface LiveAvatarStageProps {
+  /** Avatar is currently speaking */
   active: boolean
+  /** Billable LiveAvatar session is allowed (after Start interview) */
+  sessionActive: boolean
   className?: string
 }
 
-export function LiveAvatarStage({ active, className }: LiveAvatarStageProps) {
+export function LiveAvatarStage({ active, sessionActive, className }: LiveAvatarStageProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
+  const [status, setStatus] = useState<'idle' | 'connecting' | 'ready' | 'error'>('idle')
+  const [errorMessage, setErrorMessage] = useState('')
 
   useEffect(() => {
     setLiveAvatarVideoElement(videoRef.current)
@@ -19,24 +25,96 @@ export function LiveAvatarStage({ active, className }: LiveAvatarStageProps) {
   }, [])
 
   useEffect(() => {
-    const credentials = getLiveAvatarCredentials()
-    if (!credentials || !videoRef.current) return
-    void reconnectLiveAvatarVideo()
-  }, [active])
+    if (!sessionActive) {
+      setStatus('idle')
+      setErrorMessage('')
+      return
+    }
+
+    let cancelled = false
+
+    async function connect() {
+      setStatus('connecting')
+      setErrorMessage('')
+
+      const ok = await ensureLiveAvatarSession()
+      if (cancelled) return
+
+      if (!ok) {
+        setStatus('error')
+        setErrorMessage(getLiveAvatarLastError() ?? 'Could not connect LiveAvatar video')
+        return
+      }
+
+      await reconnectLiveAvatarVideo()
+      if (cancelled) return
+
+      const video = videoRef.current
+      if (video && video.videoWidth > 0) {
+        setStatus('ready')
+        return
+      }
+
+      window.setTimeout(() => {
+        if (cancelled) return
+        if (videoRef.current && videoRef.current.videoWidth > 0) {
+          setStatus('ready')
+        } else {
+          setStatus('connecting')
+        }
+      }, 1200)
+    }
+
+    void connect()
+    return () => {
+      cancelled = true
+    }
+  }, [sessionActive])
 
   useEffect(() => {
     const video = videoRef.current
-    if (!video || active) return
-    video.pause()
-  }, [active])
+    if (!video) return
+
+    const onPlaying = () => setStatus('ready')
+    video.addEventListener('playing', onPlaying)
+    video.addEventListener('loadeddata', onPlaying)
+    return () => {
+      video.removeEventListener('playing', onPlaying)
+      video.removeEventListener('loadeddata', onPlaying)
+    }
+  }, [])
 
   return (
-    <video
-      ref={videoRef}
-      className={`liveavatar-avatar-video${active ? ' active' : ''}${className ? ` ${className}` : ''}`}
-      playsInline
-      autoPlay
-      aria-label="LiveAvatar AI interviewer video"
-    />
+    <div className={`liveavatar-stage${className ? ` ${className}` : ''}`}>
+      {!sessionActive && (
+        <div className="liveavatar-stage-overlay idle" aria-live="polite">
+          <strong>LiveAvatar Lite</strong>
+          <span>Press <em>Start interview</em> to connect video.</span>
+          <span className="tiny">Session billing starts only after you start — not while this screen is idle.</span>
+        </div>
+      )}
+      {sessionActive && status !== 'ready' && (
+        <div className="liveavatar-stage-overlay" aria-live="polite">
+          {status === 'error' ? (
+            <>
+              <strong>LiveAvatar video unavailable</strong>
+              <span>{errorMessage}</span>
+            </>
+          ) : (
+            <>
+              <span className="interview-loading-spinner" aria-hidden="true" />
+              <span>Connecting LiveAvatar…</span>
+            </>
+          )}
+        </div>
+      )}
+      <video
+        ref={videoRef}
+        className={`liveavatar-avatar-video${active ? ' speaking' : ''}`}
+        playsInline
+        autoPlay
+        aria-label="LiveAvatar AI interviewer video"
+      />
+    </div>
   )
 }
