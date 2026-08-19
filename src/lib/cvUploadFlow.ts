@@ -1,5 +1,6 @@
 import type { CvParsePayload } from '../types'
 import { applyCvParsePayload, getCvParseProfile } from '../data/cvParseProfiles'
+import { resolveCvSourceUrl } from './cvSourceUrl'
 import { localAi, type CvParseResult } from './localAi'
 
 export type CvUploadStage = 'idle' | 'reading' | 'uploading' | 'parsing' | 'mapping' | 'done' | 'error'
@@ -25,6 +26,7 @@ export interface CvUploadResult extends CvParsePayload {
   fileType: string
   mode: CvParseResult['mode']
   isScannedPdf: boolean
+  sourceUrl: string
 }
 
 function wait(ms: number) {
@@ -130,13 +132,13 @@ export async function runCvUploadFlow(
   const isScannedPdf = input.isScannedPdf ?? sampleId === 'pdf-scan'
 
   try {
-    onProgress({ stage: 'reading', progress: 4, message: 'Preparing upload…' })
+    onProgress({ stage: 'reading', progress: 4, message: 'Reading document…' })
 
     const loaded = input.file
       ? await readLocalFile(input.file, onProgress)
       : await readControlledSample(input.filePath ?? `/issue-5302-inputs/${input.fileName}`, onProgress)
 
-    onProgress({ stage: 'uploading', progress: 42, message: 'Uploading to local document parser…' })
+    onProgress({ stage: 'uploading', progress: 42, message: 'Uploading to document service…' })
     await wait(550)
 
     onProgress({ stage: 'uploading', progress: 58, message: `Transfer complete · ${formatBytes(loaded.fileSize)}` })
@@ -145,7 +147,7 @@ export async function runCvUploadFlow(
     onProgress({
       stage: 'parsing',
       progress: 72,
-      message: isScannedPdf ? 'Running OCR on scanned PDF…' : 'Extracting fields from document…',
+      message: isScannedPdf ? 'Extracting · OCR on scanned PDF…' : 'Extracting · AI field detection…',
     })
 
     const parsed = await parseWithAdapter({
@@ -158,7 +160,7 @@ export async function runCvUploadFlow(
 
     await wait(isScannedPdf ? 900 : 650)
 
-    onProgress({ stage: 'mapping', progress: 90, message: 'Mapping extracted fields to profile…' })
+    onProgress({ stage: 'mapping', progress: 90, message: 'Normalizing · mapping to profile schema…' })
     await wait(350)
 
     const payload = applyCvParsePayload(sampleId, input.fileName, parsed)
@@ -166,7 +168,7 @@ export async function runCvUploadFlow(
       throw new Error('LLM returned no parsed CV fields')
     }
 
-    onProgress({ stage: 'done', progress: 100, message: 'Upload and parse complete' })
+    onProgress({ stage: 'done', progress: 100, message: 'Ready for review' })
 
     return {
       sampleId,
@@ -175,6 +177,7 @@ export async function runCvUploadFlow(
       fileType: loaded.fileType,
       mode: parsed.mode,
       isScannedPdf,
+      sourceUrl: resolveCvSourceUrl(sampleId, input.fileName, input.filePath),
       ...payload,
     }
   } catch (error) {

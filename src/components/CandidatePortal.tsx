@@ -5,8 +5,8 @@ import { AvatarPanel } from './AvatarPanel'
 import { VoiceAnswerInput } from './VoiceAnswerInput'
 import { EvidenceModal } from './EvidenceModal'
 import { SourceDocumentModal } from './SourceDocumentModal'
+import { CvReviewPanel } from './CvReviewPanel'
 import { CvProfilePanel } from './CvProfilePanel'
-import { CvParseConfirmModal } from './CvParseConfirmModal'
 import { Layout } from './Layout'
 import { CV_UPLOAD_SAMPLES, CV_V2_DIFF } from '../data/candidates'
 import { resolveSampleProfileId } from '../data/cvParseProfiles'
@@ -20,6 +20,7 @@ import { unlockAudioPlayback } from '../lib/audioUnlock'
 import { avatarLipSyncBus } from '../lib/avatarLipSyncBus'
 import { controlledViewUrl } from '../lib/controlledDocUrl'
 import { runCvUploadFlow, type CvUploadProgress, type CvUploadResult } from '../lib/cvUploadFlow'
+import { resolveCvSourceUrl } from '../lib/cvSourceUrl'
 import {
   buildImprovementTips,
   buildInterviewFollowUp,
@@ -98,6 +99,13 @@ export function CandidatePortal() {
   const [appliedCvFileName, setAppliedCvFileName] = useState('')
   const [uploadExpanded, setUploadExpanded] = useState(false)
   const [parsePreview, setParsePreview] = useState<CvUploadResult | null>(null)
+  const [appliedSourceUrl, setAppliedSourceUrl] = useState('')
+  const [lastUploadInput, setLastUploadInput] = useState<{
+    sampleId: string
+    label: string
+    filePath?: string
+    isScannedPdf?: boolean
+  } | null>(null)
   const [dragActive, setDragActive] = useState(false)
   const [reviewReady, setReviewReady] = useState(false)
   const [uploadBusy, setUploadBusy] = useState(false)
@@ -248,12 +256,19 @@ export function CandidatePortal() {
     file?: File
     isScannedPdf?: boolean
   }) {
-    if (uploadBusy || uploadedSamples.includes(input.sampleId)) return
+    if (uploadBusy) return
+    if (!profileFromCv && uploadedSamples.includes(input.sampleId)) return
+    setLastUploadInput({
+      sampleId: input.sampleId,
+      label: input.label,
+      filePath: input.filePath,
+      isScannedPdf: input.isScannedPdf,
+    })
     if (profileFromCv) setUploadExpanded(true)
     setUploadBusy(true)
     setUploadError('')
     setReviewReady(false)
-    setUploadProgress({ stage: 'reading', progress: 0, message: 'Starting upload…' })
+    setUploadProgress({ stage: 'reading', progress: 0, message: 'Reading document…' })
     try {
       const result = await runCvUploadFlow(
         {
@@ -267,6 +282,7 @@ export function CandidatePortal() {
       )
       setParsePreview(result)
       log('System', 'LLM CV parsing invoked', `${result.fileName}; ${result.fileSize} bytes; mode: ${result.mode}`, 'C1')
+      window.setTimeout(() => scrollToElement(confirmFieldsRef.current), 0)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Upload failed'
       setUploadError(message)
@@ -303,6 +319,7 @@ export function CandidatePortal() {
     setScanImported(parsePreview.isScannedPdf)
     setProfileFromCv(true)
     setAppliedCvFileName(parsePreview.fileName)
+    setAppliedSourceUrl(parsePreview.sourceUrl)
     setUploadExpanded(false)
     setUploadedSamples((current) => (
       current.includes(parsePreview.sampleId) ? current : [...current, parsePreview.sampleId]
@@ -320,6 +337,41 @@ export function CandidatePortal() {
   function cancelParsePreview() {
     setParsePreview(null)
     setUploadProgress({ stage: 'idle', progress: 0, message: '' })
+  }
+
+  function updateParsePreviewScalar(key: string, value: string) {
+    setParsePreview((current) => {
+      if (!current) return current
+      return {
+        ...current,
+        fields: current.fields.map((field) => (
+          field.key === key
+            ? {
+                ...field,
+                value,
+                status: field.status === 'missing' && value.trim() ? 'parsed' : field.status,
+              }
+            : field
+        )),
+      }
+    })
+  }
+
+  function updateParsePreviewSkills(items: string[]) {
+    setParsePreview((current) => (
+      current ? { ...current, skills: { ...current.skills, items } } : current
+    ))
+  }
+
+  function updateParsePreviewLanguages(items: string[]) {
+    setParsePreview((current) => (
+      current ? { ...current, languages: { ...current.languages, items } } : current
+    ))
+  }
+
+  function handleReparseCv() {
+    if (!lastUploadInput || uploadBusy) return
+    void processCvUpload(lastUploadInput)
   }
 
   function handleDrop(event: React.DragEvent<HTMLDivElement>) {
@@ -599,9 +651,9 @@ export function CandidatePortal() {
               <strong>
                 {uploadProgress.stage === 'reading' && 'Reading document'}
                 {uploadProgress.stage === 'uploading' && 'Uploading'}
-                {uploadProgress.stage === 'parsing' && 'AI parsing CV'}
-                {uploadProgress.stage === 'mapping' && 'Preparing review'}
-                {uploadProgress.stage === 'done' && 'Ready to review'}
+                {uploadProgress.stage === 'parsing' && 'Extracting'}
+                {uploadProgress.stage === 'mapping' && 'Normalizing'}
+                {uploadProgress.stage === 'done' && 'Ready for review'}
                 {(uploadProgress.stage === 'error' || uploadError) && 'Upload failed'}
               </strong>
               <span>{uploadProgress.progress}%</span>
@@ -665,59 +717,73 @@ export function CandidatePortal() {
               <header className="section-head">
                 <h1>C1 · Apply & confirm profile</h1>
                 <p>
-                  {profileFromCv
-                    ? 'Review extracted fields, edit if needed, then submit to Jadarah (simulated).'
-                    : 'Upload your CV first — AI extracts fields for you to review, then submit to Jadarah (simulated).'}
+                  {parsePreview || profileFromCv
+                    ? 'Review extracted fields against your CV, edit if needed, then confirm for Jadarah (simulated).'
+                    : 'Upload your CV — AI extracts fields for human review, then submit to Jadarah (simulated).'}
                 </p>
               </header>
-              <div className={`card c1-layout ${profileFromCv ? 'c1-profile-focused' : 'c1-upload-only'}`}>
-                <div className="c1-upload-column">
+
+              {!parsePreview && !profileFromCv && (
+                <div className="card c1-upload-card">
                   {renderCvUploadControls()}
                 </div>
+              )}
 
-                {profileFromCv && (
-                  <div ref={confirmFieldsRef} className="cv-review-panel">
-                    <h3>Your profile</h3>
-                    <p className="muted tiny">Edit any field, then submit when everything looks correct.</p>
-                    {scanImported && (
-                      <div className="parse-note">
-                        <strong>Scanned PDF · local OCR</strong>
-                        <span>Education was extracted with lower confidence — please verify.</span>
-                      </div>
-                    )}
-                    <CvProfilePanel
-                      fields={fields}
-                      skills={profileSkills}
-                      languages={profileLanguages}
-                      workHistory={profileWorkHistory}
-                      onFieldChange={updateScalarField}
-                      onSkillsChange={(items) => updateTagGroup(setProfileSkills, items)}
-                      onLanguagesChange={(items) => updateTagGroup(setProfileLanguages, items)}
-                      onEvidence={(title, evidence, source) => setEvidenceModal({ title, evidence, source })}
-                    />
-                    <div className="actions">
-                      <button type="button" onClick={() => { setDraftSaved(true); log('Candidate', 'Draft saved', 'Profile wizard draft', 'C1') }}>Save draft</button>
-                      <button type="button" onClick={confirmAllFields}>Confirm all fields</button>
-                      <button
-                        type="button"
-                        className="primary"
-                        disabled={!canSubmitProfile}
-                        onClick={() => {
-                          confirmAllFields()
-                          setReviewReady(true)
-                        }}
-                      >
-                        Review & submit
-                      </button>
+              {(parsePreview || profileFromCv) && (
+                <>
+                  {(showCompactUpload || uploadExpanded || uploadBusy) && (
+                    <div className="card c1-upload-card c1-upload-card-inline">
+                      {renderCvUploadControls()}
                     </div>
-                    {submitBlockReason && (
-                      <p className="muted tiny">{submitBlockReason}</p>
-                    )}
-                    {draftSaved && <p className="ok-text">Draft saved.</p>}
+                  )}
+
+                  <div ref={confirmFieldsRef} className="card c1-review-card">
+                    <CvReviewPanel
+                      fileName={parsePreview?.fileName ?? appliedCvFileName}
+                      sourceUrl={parsePreview?.sourceUrl ?? (appliedSourceUrl || resolveCvSourceUrl('pdf-en', appliedCvFileName))}
+                      fields={parsePreview?.fields ?? fields}
+                      skills={parsePreview?.skills ?? profileSkills}
+                      languages={parsePreview?.languages ?? profileLanguages}
+                      workHistory={parsePreview?.workHistory ?? profileWorkHistory}
+                      isScannedPdf={parsePreview?.isScannedPdf ?? scanImported}
+                      parseMode={parsePreview?.mode}
+                      readOnly={false}
+                      reparseBusy={uploadBusy}
+                      onFieldChange={parsePreview ? updateParsePreviewScalar : updateScalarField}
+                      onSkillsChange={parsePreview ? updateParsePreviewSkills : (items) => updateTagGroup(setProfileSkills, items)}
+                      onLanguagesChange={parsePreview ? updateParsePreviewLanguages : (items) => updateTagGroup(setProfileLanguages, items)}
+                      onEvidence={(title, evidence, source) => setEvidenceModal({ title, evidence, source })}
+                      onReparse={lastUploadInput ? handleReparseCv : undefined}
+                      footer={parsePreview ? (
+                        <div className="cv-decision-actions">
+                          <button type="button" onClick={cancelParsePreview}>Upload a different file</button>
+                          <button type="button" className="primary" onClick={acceptParsePreview}>Confirm extraction</button>
+                        </div>
+                      ) : (
+                        <div className="cv-decision-actions">
+                          <button type="button" onClick={() => { setDraftSaved(true); log('Candidate', 'Draft saved', 'Profile wizard draft', 'C1') }}>Save draft</button>
+                          <button type="button" onClick={confirmAllFields}>Confirm all fields</button>
+                          <button
+                            type="button"
+                            className="primary"
+                            disabled={!canSubmitProfile}
+                            onClick={() => {
+                              confirmAllFields()
+                              setReviewReady(true)
+                            }}
+                          >
+                            Review & submit
+                          </button>
+                          {submitBlockReason && <p className="muted tiny">{submitBlockReason}</p>}
+                          {draftSaved && <p className="ok-text">Draft saved.</p>}
+                        </div>
+                      )}
+                    />
                   </div>
-                )}
-              </div>
-              {reviewReady && (
+                </>
+              )}
+
+              {reviewReady && profileFromCv && !parsePreview && (
                 <section ref={submissionReviewRef} className="card submission-review">
                   <header className="section-head">
                     <div>
@@ -1061,18 +1127,6 @@ export function CandidatePortal() {
 
       {evidenceModal && <EvidenceModal {...evidenceModal} onClose={() => setEvidenceModal(null)} />}
       {sourceDoc && <SourceDocumentModal {...sourceDoc} onClose={() => setSourceDoc(null)} />}
-      {parsePreview && (
-        <CvParseConfirmModal
-          fileName={parsePreview.fileName}
-          fields={parsePreview.fields}
-          skills={parsePreview.skills}
-          languages={parsePreview.languages}
-          workHistory={parsePreview.workHistory}
-          isScannedPdf={parsePreview.isScannedPdf}
-          onConfirm={acceptParsePreview}
-          onCancel={cancelParsePreview}
-        />
-      )}
     </>
   )
 }

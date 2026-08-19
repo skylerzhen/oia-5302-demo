@@ -5,7 +5,13 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Versioning foll
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-19
+
 ### Added
+- C1 Document Intelligence review: two-column `CvReviewPanel` (source CV + editable fields)
+- `CompletenessPill` — extraction completeness indicator (UIS pattern)
+- Re-parse CV action; pipeline stage labels (Reading → Extracting → Normalizing)
+- OIA design tokens (navy palette) aligned with `uiscloud-oman/oia-demo-frontend`
 - HR portal: candidate journey modal, current-candidate card on H2–H4, score summary on final decision
 - Custom Surge domain support in `deploy-surge-cloud.mjs` (second CLI arg)
 - API body auth (`apiKey`) for Surge→Render CORS compatibility
@@ -19,7 +25,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Versioning foll
 - C1 compact upload UI after CV applied; missing-field parse path via server markdown
 
 ### Changed
+- C1 CV review: inline evidence reviewer replaces parse confirm modal
 - Live demo primary URL: https://oia-recruitment.coolai.tech (backup: oia-rfq-5302.surge.sh)
+- Topbar / primary buttons / status pills use OIA navy brand colors
 
 ## [0.2.0] - 2026-08-17
 
@@ -61,6 +69,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Versioning foll
 ### Paused
 - 3D Avatar VRoid lip-sync enabled when `public/avatar/oia-vroid-interviewer.vrm` present (demo uses AvatarSample_B)
 
-[Unreleased]: https://github.com/skylerzhen/oia-5302-demo/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/skylerzhen/oia-5302-demo/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/skylerzhen/oia-5302-demo/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/skylerzhen/oia-5302-demo/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/skylerzhen/oia-5302-demo/releases/tag/v0.1.0
