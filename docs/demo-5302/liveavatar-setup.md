@@ -27,7 +27,7 @@ npm run liveavatar:list-avatars
 
 ```env
 LIVEAVATAR_API_KEY=your-liveavatar-key
-LIVEAVATAR_AVATAR_ID=uuid-from-list-avatars
+LIVEAVATAR_AVATAR_ID=e9844e6d-847e-4964-a92b-7ecd066f69df
 ```
 
 5. Verify locally (starts session, OpenAI PCM TTS, speak, stop):

@@ -25,6 +25,7 @@ services:
       - key: LIVEAVATAR_API_KEY
         sync: false
       - key: LIVEAVATAR_AVATAR_ID
+        value: e9844e6d-847e-4964-a92b-7ecd066f69df
         sync: false
       - key: API_SECRET
         sync: false
