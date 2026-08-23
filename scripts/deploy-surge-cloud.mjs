@@ -19,9 +19,12 @@ if (apiSecret) {
 }
 
 // Surge build needs devDependencies (tsc, vite). Render uses --omit=dev only on the API host.
+const spawnShell = process.platform === 'win32'
+
 const install = spawnSync('npm', ['install'], {
   stdio: 'inherit',
   env: process.env,
+  shell: spawnShell,
 })
 if (install.status !== 0) process.exit(install.status ?? 1)
 
@@ -31,6 +34,7 @@ if (apiSecret) buildEnv.VITE_API_SECRET = apiSecret
 const build = spawnSync('npm', ['run', 'build'], {
   stdio: 'inherit',
   env: buildEnv,
+  shell: spawnShell,
 })
 
 if (build.status !== 0) process.exit(build.status ?? 1)
@@ -38,6 +42,7 @@ if (build.status !== 0) process.exit(build.status ?? 1)
 const deploy = spawnSync('npx', ['--yes', 'surge', 'dist', domain], {
   stdio: 'inherit',
   env: process.env,
+  shell: spawnShell,
 })
 
 process.exit(deploy.status ?? 0)
