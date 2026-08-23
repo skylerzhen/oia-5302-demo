@@ -1,9 +1,30 @@
 :root {
-  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --oia-navy900: #0B1A2F;
+  --oia-navy800: #13243B;
+  --oia-navy-primary: #13315C;
+  --oia-canvas: #F4F7FB;
+  --oia-card: #FFFFFF;
+  --oia-hairline: #E3E8F0;
+  --oia-text-primary: #0E1726;
+  --oia-text-secondary: #5A6B82;
+  --oia-green: #1F7A4D;
+  --oia-green-tint: #E8F2EC;
+  --oia-amber: #B7791F;
+  --oia-amber-tint: #FBF1E0;
+  --oia-crimson: #9B1C31;
+  --oia-crimson-tint: #F7E7EB;
+  --oia-slate-muted: #8AA0BE;
+  --oia-slate-tint: #EEF2F8;
+  --oia-radius-control: 4px;
+  --oia-radius-card: 6px;
+  --oia-radius-pill: 9999px;
+
+  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-size: 13px;
   line-height: 1.5;
   font-weight: 400;
-  color: #0f172a;
-  background: #eef2f7;
+  color: var(--oia-text-primary);
+  background: var(--oia-canvas);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -16,6 +37,8 @@
 body {
   margin: 0;
   min-height: 100vh;
+  color: var(--oia-text-primary);
+  background: var(--oia-canvas);
 }
 
 button,
@@ -31,7 +54,7 @@ button {
 
 code {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  background: #e2e8f0;
+  background: var(--oia-slate-tint);
   padding: 0.1rem 0.35rem;
-  border-radius: 4px;
+  border-radius: var(--oia-radius-control);
 }

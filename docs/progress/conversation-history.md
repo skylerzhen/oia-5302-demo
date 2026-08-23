@@ -35,6 +35,21 @@
 - **A7 为公司项目，不进个人 GitHub**
 - 用户要求：同步 **项目进度** 而非仅代码 → 本目录 + 收工写对话摘要
 
+## 2026-08-18 · HR + 域名 + LiveAvatar stabilisation
+
+- HR 门户：候选人旅程、H2–H4 流程卡片、H4 评分总览
+- 自定义域名 coolai.tech / uiscloud.cc 部署与 env 注入修复
+- LiveAvatar FPS 实验回退；用户确认「可以了」
+- v0.3.0 发布：UIS 双栏 C1 review
+
+## 2026-08-19 · UIS 对齐 + 正式域名
+
+- C1 对齐 Document Intelligence（双栏 review、Completeness、Re-parse）
+- `uiscloud-oman/oia-demo-frontend` clone；确认无独立 CV 模块
+- 正式域名 **https://oia-recruitment.uiscloud.cc**
+- API/LLM/TTS/LiveAvatar 健康；C4 三轮追问测试稿
+- 并行：华丰 AI 大脑大屏项目启动
+
 ## 未决 / 延续
 
 - 8/16 Go/No-Go 排练证据（录像、arabic review）

@@ -5,6 +5,10 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Versioning foll
 
 ## [Unreleased]
 
+### Changed
+- Global UI: replace legacy teal/green accents with OIA navy design tokens (`App.css`, `index.css`)
+- Primary demo URL: https://oia-recruitment.uiscloud.cc
+
 ## [0.3.0] - 2026-08-19
 
 ### Added
@@ -26,7 +30,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Versioning foll
 
 ### Changed
 - C1 CV review: inline evidence reviewer replaces parse confirm modal
-- Live demo primary URL: https://oia-recruitment.coolai.tech (backup: oia-rfq-5302.surge.sh)
+- Live demo primary URL: https://oia-recruitment.uiscloud.cc (backup: oia-rfq-5302.surge.sh)
 - Topbar / primary buttons / status pills use OIA navy brand colors
 
 ## [0.2.0] - 2026-08-17

@@ -57,3 +57,5 @@ docs/daily-logs/2026-08-15.md
 | [2026-08-15](./2026-08-15.md) | Landing 修复、GitHub 仓库与同步体系 |
 | [2026-08-17](./2026-08-17.md) | LiveAvatar C4 重写、C1 certification 修复、v0.2.0 发布 |
 | [2026-08-18](./2026-08-18.md) | HR 门户增强、coolai 域名部署、LiveAvatar 部署/回退 stabilisation |
+| [2026-08-19](./2026-08-19.md) | UIS C1 对齐、uiscloud.cc 域名、v0.3.0、Simi 对接 |
+| [2026-08-23](./2026-08-23.md) | 全站 navy UI 统一、进度/对话同步 Git |
