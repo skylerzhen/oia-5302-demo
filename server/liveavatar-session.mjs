@@ -1,8 +1,10 @@
 import { randomUUID } from 'node:crypto'
 
 const SAMPLE_RATE = 24_000
-const BYTES_PER_SECOND = SAMPLE_RATE * 2
-const CHUNK_BYTES = BYTES_PER_SECOND
+const BYTES_PER_SAMPLE = 2
+/** Stream PCM at realtime — sending 1s chunks every 40ms breaks LiveAvatar lip-sync. */
+const CHUNK_DURATION_MS = 100
+const CHUNK_BYTES = Math.floor(SAMPLE_RATE * BYTES_PER_SAMPLE * (CHUNK_DURATION_MS / 1000))
 
 const sessions = new Map()
 
@@ -76,7 +78,11 @@ async function speakPcmOnSocket(ws, pcmBuffer, signal) {
       type: 'agent.speak',
       audio: chunk.toString('base64'),
     }))
-    await sleep(40)
+    const chunkDurationMs = Math.max(
+      20,
+      Math.round((chunk.length / (SAMPLE_RATE * BYTES_PER_SAMPLE)) * 1000),
+    )
+    await sleep(chunkDurationMs)
   }
 
   const speakEnded = new Promise((resolve, reject) => {

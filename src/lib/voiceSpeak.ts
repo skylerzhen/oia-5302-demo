@@ -7,7 +7,7 @@ import { isOpeningPresetText, OPENING_AUDIO_URL } from './demoAudio'
 import { synthesizeEdgeTtsBrowser } from './edgeTtsClient'
 import { unlockAudioPlayback, getSharedAudioContext } from './audioUnlock'
 import { getHeyGenVideoElement, playHeyGenHls } from './heygenPlayer'
-import { getLiveAvatarSessionId, prepareLiveAvatarForSpeech, primeLiveAvatarAudioPlayback } from './liveavatarPlayer'
+import { getLiveAvatarSessionId, prepareLiveAvatarForSpeech, primeLiveAvatarAudioPlayback, waitForLiveAvatarPlayback, liveAvatarVideoReady, getLiveAvatarLastError, resetLiveAvatarSession } from './liveavatarPlayer'
 import {
   marksFromTts,
   runAudioSyncedLipSync,
@@ -240,7 +240,7 @@ async function fetchServerTts(text: string, signal?: AbortSignal): Promise<TtsRe
 async function speakWithLiveAvatar(text: string, signal?: AbortSignal): Promise<boolean> {
   if (!liveAvatarEnabled) return false
 
-  try {
+  const attemptSpeak = async () => {
     primeLiveAvatarAudioPlayback()
     const ready = await prepareLiveAvatarForSpeech(20_000)
     if (!ready) return false
@@ -253,10 +253,27 @@ async function speakWithLiveAvatar(text: string, signal?: AbortSignal): Promise<
       localAi.liveavatarSpeak({ sessionId, text }),
       wait(LIVEAVATAR_SPEAK_TIMEOUT_MS, signal).then(() => null),
     ])
+    if (!result?.ok) return false
+
+    await waitForLiveAvatarPlayback(LIVEAVATAR_SPEAK_TIMEOUT_MS, signal)
     avatarLipSyncBus.set({ viseme: 'rest', jawOpen: 0, speaking: false })
-    return Boolean(result?.ok)
-  } catch {
+    return true
+  }
+
+  try {
+    if (await attemptSpeak()) return true
+    await resetLiveAvatarSession()
+    return await attemptSpeak()
+  } catch (error) {
     avatarLipSyncBus.set({ viseme: 'rest', jawOpen: 0, speaking: false })
+    if (error instanceof Error && /session not found/i.test(error.message)) {
+      await resetLiveAvatarSession()
+      try {
+        return await attemptSpeak()
+      } catch {
+        return false
+      }
+    }
     return false
   }
 }
@@ -350,6 +367,12 @@ export async function speakInterviewLine(options: {
       primeLiveAvatarAudioPlayback()
       if (await speakWithLiveAvatar(text, signal)) {
         return 'liveavatar'
+      }
+      if (liveAvatarVideoReady()) {
+        if (await speakWithLiveAvatar(text, signal)) {
+          return 'liveavatar'
+        }
+        throw new Error(getLiveAvatarLastError() ?? 'LiveAvatar speak failed while video was connected')
       }
       return speakLiveAvatarFallback(text, prefetchedTts, signal)
     }

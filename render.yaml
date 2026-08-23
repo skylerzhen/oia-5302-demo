@@ -15,7 +15,9 @@ services:
       - key: OPENAI_API_KEY
         sync: false
       - key: OPENAI_TTS_VOICE
-        value: shimmer
+        value: onyx
+      - key: LIVEAVATAR_TTS_VOICE
+        value: onyx
       - key: OPENAI_TTS_MODEL
         value: tts-1
       - key: HEYGEN_API_KEY

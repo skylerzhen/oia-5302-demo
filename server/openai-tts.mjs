@@ -7,7 +7,7 @@ export async function synthesizeOpenAiTts(text) {
   const key = process.env.OPENAI_API_KEY?.trim()
   if (!key) throw new Error('OPENAI_API_KEY is not configured')
 
-  const voice = process.env.OPENAI_TTS_VOICE?.trim() || 'shimmer'
+  const voice = process.env.OPENAI_TTS_VOICE?.trim() || 'onyx'
   const model = process.env.OPENAI_TTS_MODEL?.trim() || 'tts-1'
 
   const response = await fetch('https://api.openai.com/v1/audio/speech', {
@@ -39,11 +39,14 @@ export async function synthesizeOpenAiTts(text) {
 }
 
 /** PCM s16le 24 kHz mono — required by LiveAvatar Lite agent.speak. */
-export async function synthesizeOpenAiTtsPcm(text) {
+export async function synthesizeOpenAiTtsPcm(text, voiceOverride) {
   const key = process.env.OPENAI_API_KEY?.trim()
   if (!key) throw new Error('OPENAI_API_KEY is not configured')
 
-  const voice = process.env.OPENAI_TTS_VOICE?.trim() || 'shimmer'
+  const voice = String(voiceOverride ?? '').trim()
+    || process.env.LIVEAVATAR_TTS_VOICE?.trim()
+    || process.env.OPENAI_TTS_VOICE?.trim()
+    || 'onyx'
   const model = process.env.OPENAI_TTS_MODEL?.trim() || 'tts-1'
 
   const response = await fetch('https://api.openai.com/v1/audio/speech', {

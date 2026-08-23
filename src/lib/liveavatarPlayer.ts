@@ -70,6 +70,11 @@ function attachTrack(track: Track) {
     return
   }
   if (track.kind === Track.Kind.Audio) {
+    if (videoEl) {
+      track.attach(videoEl)
+      primeLiveAvatarAudioPlayback()
+      return
+    }
     const audio = ensureAudioElement()
     if (audio) {
       track.attach(audio)
@@ -111,7 +116,7 @@ async function connectRoom(credentials: LiveAvatarCredentials): Promise<boolean>
     room = null
   }
 
-  const nextRoom = new Room({ adaptiveStream: true, dynacast: true })
+  const nextRoom = new Room({ adaptiveStream: false, dynacast: false })
   room = nextRoom
   wireRoomEvents(nextRoom)
 
@@ -273,6 +278,11 @@ export async function stopLiveAvatarSession() {
   }
 }
 
+/** Drop cached session so the next speak reconnects (Render load-balancer safe). */
+export async function resetLiveAvatarSession() {
+  await stopLiveAvatarSession()
+}
+
 export async function reconnectLiveAvatarVideo() {
   if (!session || !videoEl) return false
   return connectRoom(session)
@@ -280,4 +290,39 @@ export async function reconnectLiveAvatarVideo() {
 
 export function liveAvatarVideoReady() {
   return Boolean(videoEl && videoEl.videoWidth > 0)
+}
+
+/** Wait until LiveKit-synced LiveAvatar audio finishes (lip-sync stays on video track). */
+export async function waitForLiveAvatarPlayback(timeoutMs = 120_000, signal?: AbortSignal) {
+  const audio = ensureAudioElement()
+  const video = videoEl
+  if (!audio && !video) return
+
+  const startedAt = Date.now()
+
+  while (Date.now() - startedAt < timeoutMs) {
+    if (signal?.aborted) {
+      throw new DOMException('Speech interrupted', 'AbortError')
+    }
+
+    const audioPlaying = Boolean(audio && !audio.paused && !audio.ended && audio.currentTime > 0)
+    const videoPlaying = Boolean(video && !video.paused && !video.ended && video.currentTime > 0)
+
+    if (!audioPlaying && !videoPlaying) {
+      if ((audio?.currentTime ?? 0) > 0 || (video?.currentTime ?? 0) > 0) {
+        return
+      }
+      await sleep(120)
+      if (!audio?.paused && audio?.currentTime === 0) {
+        await sleep(180)
+      }
+      const stillPlaying = Boolean(
+        (audio && !audio.paused && audio.currentTime > 0) ||
+        (video && !video.paused && video.currentTime > 0),
+      )
+      if (!stillPlaying) return
+    }
+
+    await sleep(120)
+  }
 }

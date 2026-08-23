@@ -13,10 +13,14 @@ export function liveAvatarConfigured() {
 }
 
 export function liveAvatarAvailability() {
+  const ttsVoice = process.env.LIVEAVATAR_TTS_VOICE?.trim()
+    || process.env.OPENAI_TTS_VOICE?.trim()
+    || 'onyx'
   return {
     configured: liveAvatarConfigured(),
     avatarId: liveAvatarConfigured() ? liveAvatarAvatarId() : undefined,
     mode: liveAvatarConfigured() ? 'liveavatar-lite' : '2d-fallback',
+    ttsVoice,
   }
 }
 
@@ -117,9 +121,12 @@ export async function handleLiveAvatarSpeak(body) {
 
   const { synthesizeOpenAiTtsPcm } = await import('./openai-tts.mjs')
   const { speakLiveAvatarSession } = await import('./liveavatar-session.mjs')
-  const { audioBuffer } = await synthesizeOpenAiTtsPcm(text)
+  const ttsVoice = process.env.LIVEAVATAR_TTS_VOICE?.trim()
+    || process.env.OPENAI_TTS_VOICE?.trim()
+    || 'onyx'
+  const { audioBuffer, voice } = await synthesizeOpenAiTtsPcm(text, ttsVoice)
   await speakLiveAvatarSession(sessionId, audioBuffer)
-  return { ok: true, sessionId, mode: 'liveavatar-lite', text }
+  return { ok: true, sessionId, mode: 'liveavatar-lite', text, ttsVoice: voice }
 }
 
 export async function handleLiveAvatarSessionStop(body = {}) {
