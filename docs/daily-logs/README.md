@@ -59,3 +59,4 @@ docs/daily-logs/2026-08-15.md
 | [2026-08-18](./2026-08-18.md) | HR 门户增强、coolai 域名部署、LiveAvatar 部署/回退 stabilisation |
 | [2026-08-19](./2026-08-19.md) | UIS C1 对齐、uiscloud.cc 域名、v0.3.0、Simi 对接 |
 | [2026-08-23](./2026-08-23.md) | 全站 navy UI 统一、进度/对话同步 Git |
+| [2026-08-24](./2026-08-24.md) | 收工同步、a7recorder 策略确认 |
