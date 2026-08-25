@@ -12,8 +12,16 @@ import { Layout } from './Layout'
 import { CV_UPLOAD_SAMPLES, CV_V2_DIFF } from '../data/candidates'
 import { resolveSampleProfileId } from '../data/cvParseProfiles'
 import { FINANCE_JOB } from '../data/job'
-import { MCQ_QUESTIONS, INTERVIEW_PRESET } from '../data/questions'
+import { MCQ_QUESTIONS } from '../data/questions'
 import { CANDIDATE_STEPS } from '../lib/demo'
+import {
+  interviewAnswerProgress as configInterviewProgress,
+  interviewConfigSummary,
+  nextFixedQuestion,
+  openingQuestion,
+  shouldForceInterviewClosing as configShouldForceClosing,
+  toInterviewConfigPayload,
+} from '../lib/interviewConfig'
 import { localAi, type FollowUpResult } from '../lib/localAi'
 import { preloadSpeechVoices, setHeyGenAvatarEnabled, setLiveAvatarEnabled, warmInterviewSpeech } from '../lib/voiceSpeak'
 import { installLiveAvatarLifecycleGuards, stopLiveAvatarSession } from '../lib/liveavatarPlayer'
@@ -36,15 +44,13 @@ import {
   countCandidateAnswers,
   DEFAULT_INTERVIEW_CLOSING,
   getInterviewUiPhase,
-  interviewAnswerProgress,
-  shouldForceInterviewClosing,
 } from '../lib/matching'
 import { getPrimaryMatch, loadLlmMatches } from '../lib/llmMatching'
 import { profileFieldsKey } from '../lib/profileFieldsKey'
 import type { CandidateMatchWithTips } from '../lib/matching'
 import { scrollPageToTop } from '../lib/scrollPageToTop'
 import { getContentScrollContainer } from '../lib/smoothScroll'
-import type { CandidateStepId, FieldStatus, InterviewTurn, ProfileTagGroup, WorkExperienceEntry } from '../types'
+import type { CandidateStepId, FieldStatus, InterviewQuestion, InterviewTurn, ProfileTagGroup, WorkExperienceEntry } from '../types'
 
 const UPLOAD_STAGE_TRACK = [
   { id: 'reading', label: 'Read' },
@@ -95,6 +101,7 @@ export function CandidatePortal() {
     profileLanguages, setProfileLanguages,
     profileWorkHistory, setProfileWorkHistory,
     interviewTurns, setInterviewTurns,
+    interviewConfig,
     assessmentScore, setAssessmentScore,
     candidateStep: step, setCandidateStep: setStep, logout,
   } = useDemo()
@@ -180,7 +187,7 @@ export function CandidatePortal() {
   }
 
   const interviewPhase = getInterviewUiPhase(interviewTurns, pipeline.interviewCompleted, interviewClosingReady)
-  const interviewProgress = interviewAnswerProgress(interviewTurns)
+  const interviewProgress = configInterviewProgress(interviewConfig, interviewTurns)
   const match = llmMatch
   const fieldsKey = useMemo(() => profileFieldsKey(fields), [fields])
 
@@ -463,6 +470,7 @@ export function CandidatePortal() {
         answer: answer.slice(0, 1200),
         priorTurns: trimmedTurns,
         candidateProfile: interviewCandidateProfile(),
+        interviewConfig: toInterviewConfigPayload(interviewConfig),
       })
       log(
         'System',
@@ -475,6 +483,7 @@ export function CandidatePortal() {
       return {
         ...result,
         action: result.action ?? 'follow_up',
+        targetDimension: result.targetDimension,
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'timeout'
@@ -521,6 +530,7 @@ export function CandidatePortal() {
     if (avatar.isSpeaking) avatar.stop()
 
     let followUpResult: FollowUpResult | null = null
+    let fixedQuestion: InterviewQuestion | null = null
     let forceClosing = false
     let closingText: string | undefined
 
@@ -537,7 +547,21 @@ export function CandidatePortal() {
         setCandidateAnswerEn('')
         const answerCount = countCandidateAnswers(updatedTurns)
 
-        if (shouldForceInterviewClosing(answerCount)) {
+        if (configShouldForceClosing(interviewConfig, answerCount)) {
+          forceClosing = true
+          return
+        }
+
+        const fixedNext = interviewConfig.mode !== 'adaptive'
+          ? nextFixedQuestion(interviewConfig, updatedTurns)
+          : null
+
+        if (fixedNext && interviewConfig.mode !== 'adaptive') {
+          fixedQuestion = fixedNext
+          return
+        }
+
+        if (interviewConfig.mode === 'fixed_only') {
           forceClosing = true
           return
         }
@@ -558,6 +582,10 @@ export function CandidatePortal() {
         await deliverInterviewClosing(closingText)
         return
       }
+      if (fixedQuestion) {
+        await deliverConfiguredQuestion(fixedQuestion)
+        return
+      }
       if (followUpResult) {
         await deliverAvatarFollowUp(followUpResult)
       }
@@ -576,6 +604,33 @@ export function CandidatePortal() {
     setStep('C5')
   }
 
+  async function deliverConfiguredQuestion(question: InterviewQuestion) {
+    const turn: InterviewTurn = {
+      id: nextTurnId(question.source === 'jd' ? 'jd' : 'hr'),
+      speaker: 'avatar',
+      language: 'en',
+      text: question.textEn,
+      expression: question.source === 'jd' ? 'curious' : 'neutral',
+      followUpMeta: {
+        mode: 'adapter-fallback',
+        questionSource: question.source,
+        targetDimension: question.dimension,
+      },
+    }
+    setInterviewTurns((prev) => [...prev, turn])
+    const prefetchedTts = avatarMode === 'liveavatar'
+      ? null
+      : await localAi.synthesize({ text: question.textEn })
+    const mode = await avatar.speakTurn(turn, {
+      addToTranscript: false,
+      prefetchedTts,
+      onTranscriptTurn: appendAvatarTurn,
+    })
+    if (mode) {
+      log('System', 'Avatar TTS', `${question.source} question; mode: ${mode}`, 'C4')
+    }
+  }
+
   async function deliverAvatarFollowUp(followUp: FollowUpResult) {
     const turn: InterviewTurn = {
       id: nextTurnId('fu'),
@@ -586,6 +641,8 @@ export function CandidatePortal() {
       followUpMeta: {
         mode: followUp.mode === 'model' ? 'model' : 'adapter-fallback',
         evidencePhrase: followUp.evidencePhrase,
+        targetDimension: followUp.targetDimension,
+        questionSource: 'adaptive',
       },
     }
     setInterviewTurns((prev) => [...prev, turn])
@@ -681,6 +738,10 @@ export function CandidatePortal() {
 
   function handleFreeMicPartialStable(partial: string) {
     if (avatar.isThinking) return
+    if (interviewConfig.mode === 'fixed_only') return
+    if (interviewConfig.mode !== 'adaptive' && nextFixedQuestion(interviewConfig, interviewTurnsRef.current)) {
+      return
+    }
     const next = startFollowUpPrefetch(partial, (answer) =>
       generateAvatarFollowUp(answer, interviewTurnsRef.current),
     )
@@ -1129,8 +1190,12 @@ export function CandidatePortal() {
             <section className="stack">
               <header className="section-head">
                 <h1>C4 · AI avatar interview</h1>
-                <p>Adaptive dialogue (5–10 questions) · LLM decides when sufficient evidence · HR reviews recording separately</p>
+                <p>HR-configured questions + adaptive follow-up · {interviewConfigSummary(interviewConfig)}</p>
               </header>
+              <div className="interview-config-banner card">
+                <strong>Interview blueprint (HR)</strong>
+                <p className="muted tiny">{interviewConfigSummary(interviewConfig)}</p>
+              </div>
               <div className="interview-steps card">
                 <span className={interviewClosingReady || pipeline.interviewCompleted ? 'done' : 'active'}>1. Adaptive Q&amp;A</span>
                 <span className={pipeline.interviewCompleted ? 'done' : interviewPhase === 'ready_to_finish' ? 'active' : ''}>2. Submit &amp; scoring</span>
@@ -1167,16 +1232,21 @@ export function CandidatePortal() {
                             setInterviewStarted(false)
                             return
                           }
-                          const openingQuestion = INTERVIEW_PRESET[0].text
+                          const opening = openingQuestion(interviewConfig)
                           const mode = await avatar.speakTurn({
                             id: nextTurnId('g'),
                             speaker: 'avatar',
                             language: 'en',
-                            text: openingQuestion,
+                            text: opening.textEn,
                             expression: 'neutral',
+                            followUpMeta: {
+                              mode: 'adapter-fallback',
+                              questionSource: opening.source,
+                              targetDimension: opening.dimension,
+                            },
                           }, { onTranscriptTurn: appendAvatarTurn })
                           if (mode) {
-                            log('System', 'Avatar TTS', `opening; mode: ${mode}`, 'C4')
+                            log('System', 'Avatar TTS', `opening (${opening.source}); mode: ${mode}`, 'C4')
                           }
                         } catch (error) {
                           const message = error instanceof Error ? error.message : 'Interview start failed'
@@ -1195,7 +1265,17 @@ export function CandidatePortal() {
                             <p>{t.text}</p>
                             {t.followUpMeta && (
                               <p className="follow-up-meta muted tiny">
-                                {t.followUpMeta.mode === 'model' ? 'LLM follow-up' : 'Local template (LLM unavailable)'}
+                                {t.followUpMeta.questionSource === 'jd' && 'JD question set'}
+                                {t.followUpMeta.questionSource === 'custom' && 'HR custom question'}
+                                {t.followUpMeta.questionSource === 'adaptive' && (
+                                  t.followUpMeta.mode === 'model' ? 'LLM follow-up' : 'Local template (LLM unavailable)'
+                                )}
+                                {!t.followUpMeta.questionSource && (
+                                  t.followUpMeta.mode === 'model' ? 'LLM follow-up' : 'Local template (LLM unavailable)'
+                                )}
+                                {t.followUpMeta.targetDimension
+                                  ? ` · ${t.followUpMeta.targetDimension}`
+                                  : ''}
                                 {t.followUpMeta.evidencePhrase
                                   ? ` · grounded on “${t.followUpMeta.evidencePhrase}”`
                                   : ''}

@@ -85,6 +85,30 @@ export interface McqQuestion {
 
 export type Viseme = 'rest' | 'A' | 'E' | 'O' | 'M' | 'F'
 
+export interface InterviewQuestion {
+  id: string
+  textEn: string
+  textAr?: string
+  dimension?: string
+  source: 'custom' | 'jd'
+}
+
+export type InterviewConfigMode = 'fixed_only' | 'fixed_then_adaptive' | 'adaptive'
+
+/** HR-authored interview blueprint — versioned, passed to C4 orchestrator. */
+export interface InterviewConfig {
+  version: string
+  jdQuestionSetId: string
+  mode: InterviewConfigMode
+  customQuestions: InterviewQuestion[]
+  enabledJdQuestionIds: string[]
+  followUpDimensions: string[]
+  prohibitedTopics: string[]
+  minAnswers: number
+  maxAnswers: number
+  savedAt?: string
+}
+
 export interface InterviewTurn {
   id: string
   speaker: 'avatar' | 'candidate'
@@ -95,6 +119,8 @@ export interface InterviewTurn {
   followUpMeta?: {
     mode: 'model' | 'adapter-fallback'
     evidencePhrase?: string
+    targetDimension?: string
+    questionSource?: 'custom' | 'jd' | 'adaptive'
   }
 }
 

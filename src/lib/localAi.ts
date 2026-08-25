@@ -40,6 +40,7 @@ export interface FollowUpResult {
   text: string
   evidencePhrase: string
   action: 'follow_up' | 'closing'
+  targetDimension?: string
 }
 
 export interface QuestionResult {
@@ -193,11 +194,13 @@ export const localAi = {
   generateQuestion: (payload: {
     purpose?: 'opening'
     candidateProfile?: CandidateProfileInput
+    interviewConfig?: object
   }) => post<QuestionResult>('/api/local-ai/llm/generate-question', payload),
   followUp: (payload: {
     answer: string
     priorTurns?: Array<{ speaker: string; language: string; text: string }>
     candidateProfile?: CandidateProfileInput & { companyName?: string }
+    interviewConfig?: object
   }) => post<FollowUpResult>('/api/local-ai/llm/follow-up', payload, 45_000),
   generateAssessment: (payload: {
     turns: Array<{ id: string; speaker: string; language: string; text: string }>

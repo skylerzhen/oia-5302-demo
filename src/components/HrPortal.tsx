@@ -11,6 +11,7 @@ import { CurrentCandidateCard } from './CurrentCandidateCard'
 import { Layout } from './Layout'
 import { AuditTrailTable } from './AuditTrailTable'
 import { MatchDashboard } from './MatchDashboard'
+import { InterviewSetupPanel } from './InterviewSetupPanel'
 import { PRIMARY_CANDIDATE_ID } from '../data/candidates'
 import { FINANCE_JOB } from '../data/job'
 import { HR_STEPS } from '../lib/demo'
@@ -43,6 +44,7 @@ export function HrPortal() {
     hrStep: step, setHrStep: setStep, logout, seedDemoForHr,
     offline, setOffline,
     fields, auditLog,
+    interviewConfig, setInterviewConfig,
   } = useDemo()
 
   const [selectedId, setSelectedId] = useState(PRIMARY_CANDIDATE_ID)
@@ -265,6 +267,16 @@ export function HrPortal() {
             )}
           </header>
           {matchLoading && <p className="muted" role="status">LLM is scoring candidates against the job description…</p>}
+          <InterviewSetupPanel
+            config={interviewConfig}
+            onChange={setInterviewConfig}
+            onSave={(saved) => log(
+              'Recruiter',
+              'Interview blueprint saved',
+              `${saved.customQuestions.length} custom · ${saved.enabledJdQuestionIds.length} JD · ${saved.mode}`,
+              'H1',
+            )}
+          />
           <div className="filters card">
             <input placeholder="Filter: skill (e.g. portfolio)" value={filters.skill} onChange={(e) => setFilters({ ...filters, skill: e.target.value })} />
             <input type="number" placeholder="Min years" value={filters.minYears || ''} onChange={(e) => setFilters({ ...filters, minYears: Number(e.target.value) || 0 })} />

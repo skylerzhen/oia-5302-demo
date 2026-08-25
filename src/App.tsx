@@ -12,6 +12,7 @@ import {
   type DemoSession,
 } from './lib/session'
 import { createDemoPipelinePatch, createDemoCandidateC4Patch } from './lib/demoSeed'
+import { saveInterviewConfig } from './lib/interviewConfig'
 import { readDemoJumpTarget } from './lib/demoJump'
 import { enableExternalEgressGuard } from './lib/egressGuard'
 import { RoleSelect } from './components/RoleSelect'
@@ -191,6 +192,13 @@ export default function App() {
       patchSession((prev) => ({
         interviewTurns: typeof turns === 'function' ? turns(prev.interviewTurns) : turns,
       })),
+    interviewConfig: session.interviewConfig,
+    setInterviewConfig: (config) =>
+      patchSession((prev) => {
+        const next = typeof config === 'function' ? config(prev.interviewConfig) : config
+        saveInterviewConfig(next)
+        return { interviewConfig: next }
+      }),
     assessmentScore: session.assessmentScore,
     setAssessmentScore: (assessmentScore) => patchSession({ assessmentScore }),
     shortlistedReason: session.shortlistedReason,

@@ -8,6 +8,7 @@ import type {
   PipelineStatus,
   ProfileField,
   ProfileTagGroup,
+  InterviewConfig,
   UserRole,
   WorkExperienceEntry,
 } from '../types'
@@ -37,6 +38,8 @@ export interface DemoContextValue {
   setProfileWorkHistory: React.Dispatch<React.SetStateAction<WorkExperienceEntry[]>>
   interviewTurns: InterviewTurn[]
   setInterviewTurns: React.Dispatch<React.SetStateAction<InterviewTurn[]>>
+  interviewConfig: InterviewConfig
+  setInterviewConfig: React.Dispatch<React.SetStateAction<InterviewConfig>>
   assessmentScore: number
   setAssessmentScore: (n: number) => void
   shortlistedReason: string

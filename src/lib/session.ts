@@ -1,9 +1,11 @@
 import { emptyProfileFields, emptyProfileTagGroup, mergeProfileFields } from '../data/cvProfileSchema'
+import { defaultInterviewConfig, loadInterviewConfig, normalizeInterviewConfig } from './interviewConfig'
 import type {
   AuditEntry,
   CandidateStepId,
   HrStepId,
   IntegrationSyncEvent,
+  InterviewConfig,
   InterviewTurn,
   PipelineStatus,
   ProfileField,
@@ -27,6 +29,7 @@ export interface DemoSession {
   profileLanguages: ProfileTagGroup
   profileWorkHistory: WorkExperienceEntry[]
   interviewTurns: InterviewTurn[]
+  interviewConfig: InterviewConfig
   assessmentScore: number
   shortlistedReason: string
   disqualifiedReason: string
@@ -58,6 +61,7 @@ export function defaultSession(): DemoSession {
     profileLanguages: emptyProfileTagGroup(),
     profileWorkHistory: [],
     interviewTurns: [],
+    interviewConfig: defaultInterviewConfig(),
     assessmentScore: 0,
     shortlistedReason: '',
     disqualifiedReason: '',
@@ -82,6 +86,7 @@ export function loadSession(): DemoSession {
       profileSkills: parsed.profileSkills ?? emptyProfileTagGroup(),
       profileLanguages: parsed.profileLanguages ?? emptyProfileTagGroup(),
       profileWorkHistory: Array.isArray(parsed.profileWorkHistory) ? parsed.profileWorkHistory : [],
+      interviewConfig: normalizeInterviewConfig(parsed.interviewConfig ?? loadInterviewConfig()),
     }
   } catch {
     return defaultSession()

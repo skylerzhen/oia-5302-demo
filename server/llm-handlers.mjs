@@ -134,17 +134,33 @@ export async function handleGenerateQuestion(body) {
   const { fastModel } = getLlmConfig()
   const jobDescription = body.jobDescription ?? loadJobDescription()
   const candidateProfile = body.candidateProfile ?? {}
+  const config = body.interviewConfig && typeof body.interviewConfig === 'object'
+    ? body.interviewConfig
+    : null
+  const fixedQueue = Array.isArray(config?.fixedQuestionQueue) ? config.fixedQuestionQueue : []
+  if (fixedQueue.length > 0 && body.purpose !== 'adaptive') {
+    return { mode: 'model', text: String(fixedQueue[0]) }
+  }
+
+  const dimensionHints = Array.isArray(config?.followUpDimensions)
+    ? config.followUpDimensions.join(', ')
+    : 'portfolio, risk, excel, experience, education, communication'
+  const prohibited = Array.isArray(config?.prohibitedTopics)
+    ? config.prohibitedTopics.join('; ')
+    : ''
 
   const text = await chatText({
     model: fastModel,
     system: `You are an OIA AI interviewer for a senior financial analyst role.
-Generate one concise interview question in English.
-The question must reference the job and candidate profile when available.
+Generate one concise interview question in English aligned with HR interview configuration.
 Return only the question text, no quotes or preamble.`,
     user: JSON.stringify({
       jobDescription,
       candidateProfile,
       purpose: body.purpose ?? 'opening',
+      allowedDimensions: dimensionHints,
+      prohibitedTopics: prohibited,
+      hrCustomQuestions: config?.customQuestions ?? [],
     }),
   })
 
@@ -187,6 +203,9 @@ export async function handleFollowUp(body) {
   const profile = body.candidateProfile && typeof body.candidateProfile === 'object'
     ? body.candidateProfile
     : {}
+  const config = body.interviewConfig && typeof body.interviewConfig === 'object'
+    ? body.interviewConfig
+    : {}
 
   const transcript = formatInterviewTranscript(priorTurns)
   const profileLine = [
@@ -195,36 +214,53 @@ export async function handleFollowUp(body) {
     profile.companyName ? `Current employer: ${profile.companyName}` : '',
   ].filter(Boolean).join(' · ')
 
-  const MIN = 5
-  const MAX = 10
+  const MIN = Number(config.minAnswers) || 5
+  const MAX = Number(config.maxAnswers) || 10
+  const allowedDimensions = Array.isArray(config.followUpDimensions) && config.followUpDimensions.length > 0
+    ? config.followUpDimensions.join(', ')
+    : 'portfolio, risk, excel, experience, education, communication'
+  const prohibited = Array.isArray(config.prohibitedTopics)
+    ? config.prohibitedTopics.filter(Boolean).join('; ')
+    : ''
+  const fixedQueue = Array.isArray(config.fixedQuestionQueue) ? config.fixedQuestionQueue : []
+  const fixedRemaining = Math.max(0, fixedQueue.length - priorTurns.filter((t) => t.speaker === 'avatar').length)
 
   const user = [
     profileLine ? `Candidate profile: ${profileLine}` : '',
     transcript ? `Transcript so far:\n${transcript}` : '',
     `Latest candidate answer (quote a specific term from this answer in your follow-up):\n"""${answer}"""`,
     `Adaptive interview — candidate answer ${candidateRound} of ${MIN}–${MAX} (minimum ${MIN}, maximum ${MAX}).`,
+    fixedRemaining > 0 ? `Note: ${fixedRemaining} HR fixed question(s) remain in queue — this turn is adaptive unless fixed queue is exhausted on the client.` : '',
+    `Allowed follow-up dimensions: ${allowedDimensions}.`,
+    prohibited ? `Prohibited topics (never ask about): ${prohibited}.` : '',
   ].filter(Boolean).join('\n\n')
 
   const parsed = await chatJson({
     model: fastModel,
-    maxTokens: 160,
+    maxTokens: 180,
     temperature: 0.45,
     system: `You are an OIA senior financial analyst interviewer orchestrating an adaptive English interview.
-Reply with JSON only: { "action": "follow_up" | "closing", "text": "..." }
+Reply with JSON only: { "action": "follow_up" | "closing", "text": "...", "targetDimension": "portfolio|risk|excel|experience|education|communication" }
 
 Rules:
-- action "follow_up": ONE English question, max 22 words, no greeting or praise. Must include a concrete noun/phrase verbatim from the latest answer (e.g. "${answerHook.slice(0, 40)}"). Probe metrics, stakeholders, trade-offs, or validation.
-- action "closing": ONLY if candidateRound >= ${MIN} AND you have sufficient evidence across portfolio analysis, risk, metrics, and stakeholders. text = brief professional closing (1–2 sentences, no question mark).
+- action "follow_up": ONE English question, max 22 words, no greeting or praise. Must include a concrete noun/phrase verbatim from the latest answer (e.g. "${answerHook.slice(0, 40)}"). Probe metrics, stakeholders, trade-offs, or validation within allowed dimensions only.
+- targetDimension: pick the JD rubric dimension your question primarily assesses.
+- action "closing": ONLY if candidateRound >= ${MIN} AND you have sufficient evidence across allowed dimensions. text = brief professional closing (1–2 sentences, no question mark).
 - NEVER use "closing" before round ${MIN}.
+- NEVER ask about prohibited topics.
 - If unsure, prefer "follow_up" until round ${MIN}.`,
     user,
   })
 
   let action = parsed?.action === 'closing' ? 'closing' : 'follow_up'
   let text = String(parsed?.text ?? '').trim()
+  let targetDimension = typeof parsed?.targetDimension === 'string'
+    ? parsed.targetDimension.trim()
+    : ''
   if (!text) {
     action = 'follow_up'
     text = `You mentioned "${answerHook.slice(0, 48)}" — which metric confirmed your recommendation?`
+    targetDimension = targetDimension || 'portfolio'
   }
   if (candidateRound < MIN) action = 'follow_up'
   if (action === 'closing' && text.includes('?')) {
@@ -232,7 +268,7 @@ Rules:
   }
 
   const evidencePhrase = answerHook.split(/\s+/).slice(0, 8).join(' ')
-  return { mode: 'model', text, evidencePhrase, action }
+  return { mode: 'model', text, evidencePhrase, action, targetDimension: targetDimension || undefined }
 }
 
 function normalizeMatchDimensions(rawDimensions) {
