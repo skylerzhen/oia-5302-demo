@@ -1,9 +1,11 @@
 import { User, ArrowLeft } from 'lucide-react'
 import type { CandidateMatch } from '../types'
+import { computeMatchTotalScore } from '../lib/hrScoring'
 
 interface CurrentCandidateCardProps {
   candidate: CandidateMatch
   cvMatchScore?: number
+  jdWeights?: import('../lib/hrScoring').JdDimensionWeight[]
   onChangeCandidate?: () => void
   showChangeButton?: boolean
 }
@@ -11,10 +13,12 @@ interface CurrentCandidateCardProps {
 export function CurrentCandidateCard({
   candidate,
   cvMatchScore,
+  jdWeights,
   onChangeCandidate,
   showChangeButton = true,
 }: CurrentCandidateCardProps) {
-  const matchScore = cvMatchScore ?? candidate.totalScore
+  const matchScore = cvMatchScore
+    ?? computeMatchTotalScore(candidate.dimensions, jdWeights)
   return (
     <div className="current-candidate-card">
       <div className="current-candidate-avatar">

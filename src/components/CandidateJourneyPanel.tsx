@@ -1,9 +1,11 @@
 import { CheckCircle2, XCircle, Clock } from 'lucide-react'
 import type { CandidateMatch, InterviewTurn, PipelineStatus } from '../types'
+import { computeMatchTotalScore, type JdDimensionWeight } from '../lib/hrScoring'
 import type { InterviewEvaluationReport } from '../lib/interviewReport'
 
 interface CandidateJourneyPanelProps {
   match: CandidateMatch
+  jdWeights?: JdDimensionWeight[]
   assessmentScore: number
   interviewTurns: InterviewTurn[]
   interviewReport: InterviewEvaluationReport | null
@@ -13,6 +15,7 @@ interface CandidateJourneyPanelProps {
 
 export function CandidateJourneyPanel({
   match,
+  jdWeights,
   assessmentScore,
   interviewTurns,
   interviewReport,
@@ -21,6 +24,7 @@ export function CandidateJourneyPanel({
 }: CandidateJourneyPanelProps) {
   const hasInterview = interviewTurns.length > 0
   const candidateAnswers = interviewTurns.filter((t) => t.speaker === 'candidate').length
+  const cvMatchScore = computeMatchTotalScore(match.dimensions, jdWeights)
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -45,7 +49,7 @@ export function CandidateJourneyPanel({
             <div className="journey-metrics">
               <div className="journey-metric-card">
                 <span>Overall Match</span>
-                <strong>{match.totalScore}%</strong>
+                <strong>{cvMatchScore}%</strong>
               </div>
               <div className="journey-metric-card">
                 <span>Matched Dimensions</span>

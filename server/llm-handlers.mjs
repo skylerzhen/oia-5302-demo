@@ -305,11 +305,7 @@ function normalizeMatchEntry(raw, candidateId) {
   const dimensions = normalizeMatchDimensions(raw?.dimensions)
   const weightSum = dimensions.reduce((sum, d) => sum + d.maxScore, 0)
   const scoreSum = dimensions.reduce((sum, d) => sum + d.score, 0)
-  const totalScore = Math.round(
-    typeof raw?.totalScore === 'number'
-      ? Math.max(0, Math.min(100, raw.totalScore))
-      : weightSum ? (scoreSum / weightSum) * 100 : 0,
-  )
+  const totalScore = weightSum ? Math.round((scoreSum / weightSum) * 100) : 0
   const matchedCount = dimensions.filter((d) => d.matched).length
   const qualified = raw?.qualified === true || (totalScore >= 60 && matchedCount >= 4)
   const improvementTips = Array.isArray(raw?.improvementTips)

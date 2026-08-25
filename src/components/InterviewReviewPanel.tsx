@@ -190,6 +190,7 @@ export function InterviewReviewPanel({ turns }: InterviewReviewPanelProps) {
           viseme={avatar.isSpeaking ? avatar.viseme : undefined}
           avatarMode={avatarMode}
           liveAvatarSessionActive={sessionActive && avatarMode === 'liveavatar'}
+          liveAvatarContext="hr-review"
         />
         {playbackError && <p className="danger-text">{playbackError}</p>}
         <div className="playback-controls">

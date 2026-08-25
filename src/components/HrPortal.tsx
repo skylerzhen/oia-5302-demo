@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Download, UserCheck, UserX, Zap } from 'lucide-react'
 import { useDemo } from '../context/DemoContext'
 import { EvidenceModal } from './EvidenceModal'
@@ -61,6 +61,7 @@ export function HrPortal() {
   const [journeyCandidate, setJourneyCandidate] = useState<string | null>(null)
   const [pillarWeights, setPillarWeights] = useState<PillarWeights>(() => loadPillarWeights())
   const [jdWeights, setJdWeights] = useState<JdDimensionWeight[]>(() => loadJdDimensionWeights())
+  const lastAssessmentLogKeyRef = useRef('')
 
   const filtered = useMemo(() => {
     return matches.filter((m) => {
@@ -150,6 +151,7 @@ export function HrPortal() {
   useEffect(() => {
     if (!readyForInterviewReview || interviewTurns.length === 0) {
       setInterviewReport(null)
+      lastAssessmentLogKeyRef.current = ''
       return
     }
 
@@ -165,7 +167,10 @@ export function HrPortal() {
       .then((report) => {
         if (!active) return
         setInterviewReport(report)
-        log('System', 'LLM interview assessment generated', `${report.dimensions.length} dimensions · mode ${report.mode}`, 'H3')
+        if (lastAssessmentLogKeyRef.current !== assessmentKey) {
+          lastAssessmentLogKeyRef.current = assessmentKey
+          log('System', 'LLM interview assessment generated', `${report.dimensions.length} dimensions · mode ${report.mode}`, 'H3')
+        }
       })
       .catch((error: Error) => {
         if (!active) return
@@ -313,6 +318,7 @@ export function HrPortal() {
           <CurrentCandidateCard
             candidate={selected}
             cvMatchScore={cvScore}
+            jdWeights={jdWeights}
             onChangeCandidate={() => setStep('H1')}
           />
 
@@ -354,6 +360,7 @@ export function HrPortal() {
           <CurrentCandidateCard
             candidate={selected}
             cvMatchScore={cvScore}
+            jdWeights={jdWeights}
             onChangeCandidate={() => setStep('H1')}
           />
           <div className="kpi-row compact">
@@ -383,6 +390,7 @@ export function HrPortal() {
           <CurrentCandidateCard
             candidate={selected}
             cvMatchScore={cvScore}
+            jdWeights={jdWeights}
             onChangeCandidate={() => setStep('H1')}
           />
 
@@ -461,6 +469,7 @@ export function HrPortal() {
       {journeyCandidate && (
         <CandidateJourneyPanel
           match={matches.find((m) => m.candidateId === journeyCandidate) ?? matches[0]}
+          jdWeights={jdWeights}
           assessmentScore={assessmentScore}
           interviewTurns={interviewTurns}
           interviewReport={interviewReport}

@@ -10,6 +10,7 @@ interface AvatarPanelProps {
   viseme?: import('../types').Viseme
   avatarMode?: '2d' | 'heygen' | 'liveavatar' | 'liveavatar-static'
   liveAvatarSessionActive?: boolean
+  liveAvatarContext?: 'candidate-interview' | 'hr-review'
 }
 
 export function AvatarPanel({
@@ -18,6 +19,7 @@ export function AvatarPanel({
   expression = 'neutral',
   avatarMode = '2d',
   liveAvatarSessionActive = false,
+  liveAvatarContext = 'candidate-interview',
 }: AvatarPanelProps) {
   const digitalMode = avatarMode === 'heygen' || avatarMode === 'liveavatar' || avatarMode === 'liveavatar-static'
 
@@ -32,7 +34,11 @@ export function AvatarPanel({
           )}
           {avatarMode === 'heygen' && <HeyGenAvatarVideo active={speaking} />}
           {avatarMode === 'liveavatar' && (
-            <LiveAvatarStage active={speaking} sessionActive={liveAvatarSessionActive} />
+            <LiveAvatarStage
+              active={speaking}
+              sessionActive={liveAvatarSessionActive}
+              context={liveAvatarContext}
+            />
           )}
           {avatarMode === 'liveavatar-static' && <LiveAvatarStatic speaking={speaking} />}
         </div>

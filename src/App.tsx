@@ -26,7 +26,8 @@ export default function App() {
   const [session, setSession] = useState<DemoSession>(() => loadSession())
 
   useEffect(() => {
-    saveSession(session)
+    const timer = window.setTimeout(() => saveSession(session), 300)
+    return () => window.clearTimeout(timer)
   }, [session])
 
   useEffect(() => {

@@ -8,6 +8,7 @@ import {
   rankCandidates,
   type CandidateMatchWithTips,
 } from './matching'
+import { computeMatchTotalScore } from './hrScoring'
 import type { CandidateProfile, ProfileField } from '../types'
 
 export type LlmMatchLoadState = {
@@ -51,7 +52,7 @@ export async function loadLlmMatches(fields: ProfileField[]): Promise<{
           return applyLlmMatchToCandidate(candidate, llm)
         })
         .filter((m): m is CandidateMatchWithTips => m !== null)
-        .sort((a, b) => b.totalScore - a.totalScore)
+        .sort((a, b) => computeMatchTotalScore(b.dimensions) - computeMatchTotalScore(a.dimensions))
 
       return { matches, mode: result.mode }
     } catch {

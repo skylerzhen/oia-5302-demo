@@ -94,6 +94,22 @@ export async function runAudioSyncedLipSync(options: {
   }
 
   await new Promise<void>((resolve, reject) => {
+    let playingTimeout: number | null = null
+
+    const clearPlayingTimeout = () => {
+      if (playingTimeout !== null) {
+        window.clearTimeout(playingTimeout)
+        playingTimeout = null
+      }
+    }
+
+    const finishError = (error: Error) => {
+      cleanup()
+      clearPlayingTimeout()
+      signal?.removeEventListener('abort', onAbort)
+      reject(error)
+    }
+
     const tick = () => {
       if (signal?.aborted) return
       const timeMs = audio.currentTime * 1000
@@ -106,6 +122,7 @@ export async function runAudioSyncedLipSync(options: {
     }
 
     const startLoop = () => {
+      clearPlayingTimeout()
       unlockAudioPlayback()
       ensureAnalyser()
       tick()
@@ -114,20 +131,27 @@ export async function runAudioSyncedLipSync(options: {
     audio.addEventListener('playing', startLoop, { once: true })
     audio.addEventListener('ended', () => {
       cleanup()
+      clearPlayingTimeout()
       signal?.removeEventListener('abort', onAbort)
       onTick({ viseme: 'rest', jawOpen: 0 })
       resolve()
     }, { once: true })
     audio.addEventListener('error', () => {
-      cleanup()
-      signal?.removeEventListener('abort', onAbort)
-      reject(new Error('Could not play synthesized speech audio'))
+      finishError(new Error('Could not play synthesized speech audio'))
     }, { once: true })
 
+    playingTimeout = window.setTimeout(() => {
+      if (!audio.paused || audio.currentTime > 0) return
+      finishError(new Error('Audio playback did not start — check browser autoplay settings'))
+    }, 3_000)
+
+    if (!audio.paused && audio.currentTime > 0) {
+      startLoop()
+      return
+    }
+
     void audio.play().catch((error) => {
-      cleanup()
-      signal?.removeEventListener('abort', onAbort)
-      reject(error instanceof Error ? error : new Error('Could not play synthesized speech audio'))
+      finishError(error instanceof Error ? error : new Error('Could not play synthesized speech audio'))
     })
   })
 }

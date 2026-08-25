@@ -1,6 +1,6 @@
 import { CANDIDATES } from '../data/candidates'
-import { FINANCE_JOB } from '../data/job'
 import type { CandidateMatch, CandidateProfile, MatchDimension } from '../types'
+import { computeCvScoreFromDimensions } from './hrScoring'
 
 export type CandidateMatchWithTips = CandidateMatch & {
   improvementTips?: string[]
@@ -17,14 +17,16 @@ export function applyLlmMatchToCandidate(
     improvementTips?: string[]
   },
 ): CandidateMatchWithTips {
+  const dimensions = llm.dimensions
+  const totalScore = computeCvScoreFromDimensions(dimensions)
   return {
     candidateId: candidate.id,
     candidate,
-    totalScore: llm.totalScore,
-    matchedCount: llm.matchedCount,
-    totalDimensions: llm.totalDimensions,
-    qualified: llm.qualified,
-    dimensions: llm.dimensions,
+    totalScore,
+    matchedCount: dimensions.filter((d) => d.matched).length,
+    totalDimensions: dimensions.length,
+    qualified: llm.qualified && totalScore >= 60,
+    dimensions,
     improvementTips: llm.improvementTips ?? [],
   }
 }
@@ -113,12 +115,7 @@ function scoreCandidate(candidate: CandidateProfile): CandidateMatch {
     }
   })
 
-  const totalScore = Math.round(
-    dimensions.reduce((sum, d) => sum + d.score, 0) /
-      FINANCE_JOB.dimensions.reduce((sum, d) => sum + d.weight, 0) *
-      100,
-  )
-
+  const totalScore = computeCvScoreFromDimensions(dimensions)
   const matchedCount = dimensions.filter((d) => d.matched).length
 
   return {

@@ -23,6 +23,61 @@ let lifecycleInstalled = false
 let speakInFlight = false
 
 const LIVEAVATAR_SPEAK_TIMEOUT_MS = 92_000
+const MAX_RECONNECT_ATTEMPTS = 8
+const RECONNECT_BASE_MS = 400
+const RECONNECT_MAX_MS = 30_000
+
+let reconnectAttempts = 0
+let reconnectTimer: number | null = null
+let reconnectPaused = false
+
+export function isLiveAvatarReconnectPaused() {
+  return reconnectPaused
+}
+
+function clearReconnectTimer() {
+  if (reconnectTimer !== null) {
+    window.clearTimeout(reconnectTimer)
+    reconnectTimer = null
+  }
+}
+
+function resetReconnectState() {
+  reconnectAttempts = 0
+  reconnectPaused = false
+  clearReconnectTimer()
+}
+
+function scheduleLiveKitReconnect() {
+  if (reconnectPaused || !session || !videoEl) return
+
+  if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+    reconnectPaused = true
+    lastError = 'LiveAvatar reconnect limit reached — restart the interview or refresh the page.'
+    return
+  }
+
+  clearReconnectTimer()
+  const delay = Math.min(RECONNECT_BASE_MS * 2 ** reconnectAttempts, RECONNECT_MAX_MS)
+  reconnectAttempts += 1
+
+  reconnectTimer = window.setTimeout(() => {
+    reconnectTimer = null
+    if (!session || reconnectPaused) return
+    void connectRoom(session).then((ok) => {
+      if (ok) {
+        resetReconnectState()
+        return
+      }
+      if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+        reconnectPaused = true
+        lastError = 'LiveAvatar reconnect limit reached — restart the interview or refresh the page.'
+        return
+      }
+      scheduleLiveKitReconnect()
+    })
+  }, delay)
+}
 
 export function getLiveAvatarLastError() {
   return lastError
@@ -141,10 +196,8 @@ function wireRoomEvents(targetRoom: Room) {
     primeLiveAvatarAudioPlayback()
   })
   targetRoom.on(RoomEvent.Disconnected, () => {
-    if (!session || !videoEl) return
-    window.setTimeout(() => {
-      if (session) void connectRoom(session).catch(() => undefined)
-    }, 400)
+    if (!session || !videoEl || reconnectPaused) return
+    scheduleLiveKitReconnect()
   })
 }
 
@@ -174,6 +227,7 @@ async function connectRoom(credentials: LiveAvatarCredentials): Promise<boolean>
     await nextRoom.connect(credentials.livekitUrl, credentials.livekitClientToken)
     attachAllRemoteTracks(nextRoom)
     primeLiveAvatarAudioPlayback()
+    resetReconnectState()
     return true
   } catch (error) {
     lastError = error instanceof Error ? error.message : 'LiveKit connect failed'
@@ -322,6 +376,7 @@ export async function stopLiveAvatarSession() {
   session = null
   connectPromise = null
   lastError = null
+  resetReconnectState()
 
   try {
     room?.disconnect()
@@ -348,6 +403,10 @@ export async function reconnectLiveAvatarVideo() {
 /** Reconnect LiveKit or recycle the server session when video drops mid-interview. */
 export async function refreshLiveAvatarSession(): Promise<boolean> {
   if (!videoEl) return false
+  if (reconnectPaused) {
+    lastError = lastError ?? 'LiveAvatar reconnect paused — restart the interview.'
+    return false
+  }
 
   if (room?.state === 'connected') {
     attachAllRemoteTracks(room)

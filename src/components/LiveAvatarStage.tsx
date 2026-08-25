@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import {
   ensureLiveAvatarSession,
   getLiveAvatarLastError,
+  isLiveAvatarReconnectPaused,
   liveAvatarVideoHealthy,
   refreshLiveAvatarSession,
   reconnectLiveAvatarVideo,
@@ -13,10 +14,17 @@ interface LiveAvatarStageProps {
   active: boolean
   /** Billable LiveAvatar session is allowed (after Start interview) */
   sessionActive: boolean
+  /** HR replay uses different idle copy than candidate C4 */
+  context?: 'candidate-interview' | 'hr-review'
   className?: string
 }
 
-export function LiveAvatarStage({ active, sessionActive, className }: LiveAvatarStageProps) {
+export function LiveAvatarStage({
+  active,
+  sessionActive,
+  context = 'candidate-interview',
+  className,
+}: LiveAvatarStageProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const [status, setStatus] = useState<'idle' | 'connecting' | 'ready' | 'error'>('idle')
   const [errorMessage, setErrorMessage] = useState('')
@@ -90,6 +98,11 @@ export function LiveAvatarStage({ active, sessionActive, className }: LiveAvatar
     if (!sessionActive) return
 
     const timer = window.setInterval(() => {
+      if (isLiveAvatarReconnectPaused()) {
+        setStatus('error')
+        setErrorMessage(getLiveAvatarLastError() ?? 'LiveAvatar reconnect paused')
+        return
+      }
       if (liveAvatarVideoHealthy()) {
         setStatus((current) => (current === 'ready' ? current : 'ready'))
         return
@@ -99,7 +112,7 @@ export function LiveAvatarStage({ active, sessionActive, className }: LiveAvatar
         if (ok && liveAvatarVideoHealthy()) {
           setStatus('ready')
           setErrorMessage('')
-        } else if (!ok) {
+        } else if (!ok || isLiveAvatarReconnectPaused()) {
           setStatus('error')
           setErrorMessage(getLiveAvatarLastError() ?? 'LiveAvatar video reconnect failed')
         }
@@ -113,9 +126,19 @@ export function LiveAvatarStage({ active, sessionActive, className }: LiveAvatar
     <div className={`liveavatar-stage${className ? ` ${className}` : ''}`}>
       {!sessionActive && (
         <div className="liveavatar-stage-overlay idle" aria-live="polite">
-          <strong>LiveAvatar Lite</strong>
-          <span>Press <em>Start interview</em> to connect video.</span>
-          <span className="tiny">Session billing starts only after you start — not while this screen is idle.</span>
+          {context === 'hr-review' ? (
+            <>
+              <strong>Interview replay · HR review</strong>
+              <span>Press <em>Play recording</em> below to load avatar video for this transcript.</span>
+              <span className="tiny">Read-only playback — no new candidate session is started until you press Play.</span>
+            </>
+          ) : (
+            <>
+              <strong>LiveAvatar Lite</strong>
+              <span>Press <em>Start interview</em> to connect video.</span>
+              <span className="tiny">Session billing starts only after you start — not while this screen is idle.</span>
+            </>
+          )}
         </div>
       )}
       {sessionActive && status !== 'ready' && (

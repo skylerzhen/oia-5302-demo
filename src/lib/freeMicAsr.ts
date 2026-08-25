@@ -66,6 +66,35 @@ export function startFreeMicSession(options: FreeMicSessionOptions): FreeMicSess
   let partialTimer: number | null = null
   let lastPartialEmitted = ''
   let recognition: SpeechRecognitionLike | null = null
+  let restartTimer: number | null = null
+  let consecutiveErrors = 0
+  let restartDelayMs = 80
+
+  const TERMINAL_ERRORS = new Set(['not-allowed', 'service-not-allowed', 'audio-capture'])
+  const MAX_CONSECUTIVE_ERRORS = 3
+
+  const clearRestartTimer = () => {
+    if (restartTimer !== null) {
+      window.clearTimeout(restartTimer)
+      restartTimer = null
+    }
+  }
+
+  const haltRecognition = (message: string) => {
+    stopped = true
+    clearRestartTimer()
+    options.onError?.(message)
+  }
+
+  const scheduleRestart = () => {
+    if (stopped) return
+    clearRestartTimer()
+    restartTimer = window.setTimeout(() => {
+      restartTimer = null
+      if (!stopped) startRecognition()
+    }, restartDelayMs)
+    restartDelayMs = Math.min(restartDelayMs * 2, 5_000)
+  }
 
   const liveCaption = () => [utteranceFinal, interim].filter(Boolean).join(' ').trim()
 
@@ -134,6 +163,8 @@ export function startFreeMicSession(options: FreeMicSessionOptions): FreeMicSess
     instance.interimResults = true
 
     instance.onresult = (event) => {
+      consecutiveErrors = 0
+      restartDelayMs = 80
       let nextInterim = ''
       for (let i = event.resultIndex; i < event.results.length; i += 1) {
         const result = event.results[i]
@@ -146,20 +177,38 @@ export function startFreeMicSession(options: FreeMicSessionOptions): FreeMicSess
 
     instance.onerror = (event) => {
       if (stopped || event.error === 'aborted' || event.error === 'no-speech') return
+      if (TERMINAL_ERRORS.has(event.error)) {
+        haltRecognition(
+          event.error === 'not-allowed'
+            ? 'Microphone permission denied — enable mic access or use typing.'
+            : 'Microphone unavailable — use typing instead.',
+        )
+        return
+      }
+      consecutiveErrors += 1
+      if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+        haltRecognition('Speech recognition stopped after repeated errors — use typing instead.')
+        return
+      }
       options.onError?.(event.error || 'Speech recognition failed')
     }
 
     instance.onend = () => {
       if (stopped) return
-      window.setTimeout(() => {
-        if (!stopped) startRecognition()
-      }, 80)
+      scheduleRestart()
     }
 
     try {
       instance.start()
     } catch (error) {
-      options.onError?.(error instanceof Error ? error.message : 'Could not start microphone')
+      consecutiveErrors += 1
+      const message = error instanceof Error ? error.message : 'Could not start microphone'
+      if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+        haltRecognition(message)
+      } else {
+        options.onError?.(message)
+        scheduleRestart()
+      }
     }
   }
 
@@ -170,6 +219,7 @@ export function startFreeMicSession(options: FreeMicSessionOptions): FreeMicSess
       stopped = true
       clearSilenceTimer()
       clearPartialTimer()
+      clearRestartTimer()
       const active = recognition
       recognition = null
       try {
