@@ -7,7 +7,13 @@ import { isOpeningPresetText, OPENING_AUDIO_URL } from './demoAudio'
 import { synthesizeEdgeTtsBrowser } from './edgeTtsClient'
 import { unlockAudioPlayback, getSharedAudioContext } from './audioUnlock'
 import { getHeyGenVideoElement, playHeyGenHls } from './heygenPlayer'
-import { speakLiveAvatarOnce, primeLiveAvatarAudioPlayback } from './liveavatarPlayer'
+import {
+  pauseLiveAvatarOutput,
+  speakLiveAvatarOnce,
+  primeLiveAvatarAudioPlayback,
+  restoreLiveAvatarOutput,
+} from './liveavatarPlayer'
+import { isInterviewDuplexMode } from './freeMicDuplex'
 import {
   marksFromTts,
   runAudioSyncedLipSync,
@@ -24,6 +30,8 @@ const HEYGEN_SPEAK_TIMEOUT_MS = 52_000
 
 let heygenAvatarEnabled = false
 let liveAvatarEnabled = false
+let activeHtmlAudio: HTMLAudioElement | null = null
+let activeBufferStop: (() => void) | null = null
 
 export function setHeyGenAvatarEnabled(enabled: boolean) {
   heygenAvatarEnabled = enabled
@@ -31,6 +39,30 @@ export function setHeyGenAvatarEnabled(enabled: boolean) {
 
 export function setLiveAvatarEnabled(enabled: boolean) {
   liveAvatarEnabled = enabled
+}
+
+/** Stop TTS / MP3 playback. In duplex mode keep LiveAvatar stream alive (no mute gap). */
+export function stopActiveSpeech() {
+  if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+    window.speechSynthesis.cancel()
+  }
+  if (activeHtmlAudio) {
+    try {
+      activeHtmlAudio.pause()
+      activeHtmlAudio.removeAttribute('src')
+      activeHtmlAudio.load()
+    } catch {
+      // ignore
+    }
+    activeHtmlAudio = null
+  }
+  if (activeBufferStop) {
+    activeBufferStop()
+    activeBufferStop = null
+  }
+  if (isInterviewDuplexMode()) restoreLiveAvatarOutput()
+  else pauseLiveAvatarOutput()
+  avatarLipSyncBus.reset()
 }
 
 function wait(ms: number, signal?: AbortSignal) {
@@ -64,6 +96,7 @@ async function speakWithBrowser(text: string, signal?: AbortSignal) {
     throw new Error('Browser speech synthesis is not supported in this browser.')
   }
 
+  stopActiveSpeech()
   await loadSpeechVoices()
 
   const utterance = new SpeechSynthesisUtterance(text)
@@ -140,17 +173,22 @@ async function speakWithAudioElement(
   marks: ReturnType<typeof buildVisemeTimeline>,
   signal?: AbortSignal,
 ) {
+  stopActiveSpeech()
+  activeHtmlAudio = audio
   audio.preload = 'auto'
   avatarLipSyncBus.set({ speaking: true, viseme: 'rest', jawOpen: 0 })
 
-  await runAudioSyncedLipSync({
-    audio,
-    marks,
-    onTick: publishTick,
-    signal,
-  })
-
-  avatarLipSyncBus.set({ viseme: 'rest', jawOpen: 0, speaking: false })
+  try {
+    await runAudioSyncedLipSync({
+      audio,
+      marks,
+      onTick: publishTick,
+      signal,
+    })
+  } finally {
+    if (activeHtmlAudio === audio) activeHtmlAudio = null
+    avatarLipSyncBus.set({ viseme: 'rest', jawOpen: 0, speaking: false })
+  }
 }
 
 async function speakWithAudio(
@@ -159,6 +197,7 @@ async function speakWithAudio(
   marks: ReturnType<typeof buildVisemeTimeline>,
   signal?: AbortSignal,
 ) {
+  stopActiveSpeech()
   unlockAudioPlayback()
   const ctx = getSharedAudioContext()
   if (ctx && ctx.state !== 'closed') {
@@ -169,9 +208,25 @@ async function speakWithAudio(
         bytes[i] = binary.charCodeAt(i)
       }
       const audioBuffer = await ctx.decodeAudioData(bytes.buffer.slice(0))
-      await runBufferSyncedLipSync({ ctx, audioBuffer, marks, onTick: publishTick, signal })
-      return
+      const bufferAbort = new AbortController()
+      activeBufferStop = () => bufferAbort.abort()
+      const relayAbort = () => bufferAbort.abort()
+      signal?.addEventListener('abort', relayAbort, { once: true })
+      try {
+        await runBufferSyncedLipSync({
+          ctx,
+          audioBuffer,
+          marks,
+          onTick: publishTick,
+          signal: bufferAbort.signal,
+        })
+        return
+      } finally {
+        signal?.removeEventListener('abort', relayAbort)
+        activeBufferStop = null
+      }
     } catch {
+      activeBufferStop = null
       // Fall back to HTMLAudioElement below.
     }
   }
@@ -326,6 +381,14 @@ export async function speakInterviewLine(options: {
       if (await speakLiveAvatarOnce(text, signal)) {
         return 'liveavatar'
       }
+      if (await speakLiveAvatarOnce(text, signal)) {
+        return 'liveavatar-retry'
+      }
+      if (isInterviewDuplexMode()) {
+        // Avoid MP3/browser fallback in duplex — different voice causes glitches.
+        console.warn('[voice] LiveAvatar speak failed twice; skipping fallback in duplex mode')
+        return null
+      }
       return speakLiveAvatarFallback(text, prefetchedTts, signal)
     }
 
@@ -364,6 +427,55 @@ export async function speakInterviewLine(options: {
     unsubscribe()
     avatarLipSyncBus.reset()
   }
+}
+
+/** HR replay — candidate lines only (never routes through LiveAvatar). */
+export async function speakCandidateReplay(text: string, signal?: AbortSignal) {
+  stopActiveSpeech()
+  unlockAudioPlayback()
+  const prefetched = await fetchServerTts(text, signal)
+  if (prefetched?.audioBase64) {
+    try {
+      const marks = prefetched.visemeMarks?.length
+        ? prefetched.visemeMarks
+        : marksFromTts(text, 'en', estimateDurationMs(text))
+      await speakWithAudio(
+        prefetched.audioBase64,
+        prefetched.mimeType ?? 'audio/mpeg',
+        marks,
+        signal,
+      )
+      return prefetched.ttsProvider ?? 'tts'
+    } catch {
+      // Fall through to edge/browser.
+    }
+  }
+  if (await speakWithClientEdgeTts(text, signal)) return 'edge'
+  await speakWithBrowser(text, signal)
+  return 'browser'
+}
+
+/**
+ * Short acknowledgement while the candidate is still speaking (duplex backchannel).
+ * Does not tear down LiveAvatar or stop the always-on mic session.
+ */
+export async function speakBackchannelLine(text: string) {
+  if (!('speechSynthesis' in window)) return
+  unlockAudioPlayback()
+  await loadSpeechVoices()
+
+  const utterance = new SpeechSynthesisUtterance(text)
+  utterance.lang = 'en-US'
+  utterance.rate = 1.05
+  utterance.volume = 0.42
+  const voice = pickSpeechVoice()
+  if (voice) utterance.voice = voice
+
+  await new Promise<void>((resolve) => {
+    utterance.onend = () => resolve()
+    utterance.onerror = () => resolve()
+    window.speechSynthesis.speak(utterance)
+  })
 }
 
 export function preloadSpeechVoices() {

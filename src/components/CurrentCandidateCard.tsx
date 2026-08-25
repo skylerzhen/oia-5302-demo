@@ -3,15 +3,18 @@ import type { CandidateMatch } from '../types'
 
 interface CurrentCandidateCardProps {
   candidate: CandidateMatch
+  cvMatchScore?: number
   onChangeCandidate?: () => void
   showChangeButton?: boolean
 }
 
 export function CurrentCandidateCard({
   candidate,
+  cvMatchScore,
   onChangeCandidate,
   showChangeButton = true,
 }: CurrentCandidateCardProps) {
+  const matchScore = cvMatchScore ?? candidate.totalScore
   return (
     <div className="current-candidate-card">
       <div className="current-candidate-avatar">
@@ -32,8 +35,8 @@ export function CurrentCandidateCard({
         <div className="current-candidate-metrics">
           <div className="current-candidate-metric">
             <span>CV-JD Match</span>
-            <strong className={candidate.totalScore >= 60 ? 'ok-text' : 'danger-text'}>
-              {candidate.totalScore}%
+            <strong className={matchScore >= 60 ? 'ok-text' : 'danger-text'}>
+              {matchScore}%
             </strong>
           </div>
           <div className="current-candidate-metric">

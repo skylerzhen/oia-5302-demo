@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type Dispatch, t
 import { CheckCircle2, ChevronUp, FileUp, Play, Upload } from 'lucide-react'
 import { useDemo } from '../context/DemoContext'
 import { AvatarPanel } from './AvatarPanel'
-import { VoiceAnswerInput } from './VoiceAnswerInput'
+import { FreeMicPanel } from './FreeMicPanel'
 import { EvidenceModal } from './EvidenceModal'
 import { SourceDocumentModal } from './SourceDocumentModal'
 import { CvReviewPanel } from './CvReviewPanel'
@@ -18,6 +18,13 @@ import { localAi, type FollowUpResult } from '../lib/localAi'
 import { preloadSpeechVoices, setHeyGenAvatarEnabled, setLiveAvatarEnabled, warmInterviewSpeech } from '../lib/voiceSpeak'
 import { installLiveAvatarLifecycleGuards, stopLiveAvatarSession } from '../lib/liveavatarPlayer'
 import { unlockAudioPlayback } from '../lib/audioUnlock'
+import {
+  prefetchMatchesUtterance,
+  resetDuplexSession,
+  setInterviewDuplexMode,
+  startFollowUpPrefetch,
+  type FollowUpPrefetch,
+} from '../lib/freeMicDuplex'
 import { useInterviewAvatar } from '../hooks/useInterviewAvatar'
 import { controlledViewUrl } from '../lib/controlledDocUrl'
 import { runCvUploadFlow, type CvUploadProgress, type CvUploadResult } from '../lib/cvUploadFlow'
@@ -102,7 +109,6 @@ export function CandidatePortal() {
   const [interviewClosingReady, setInterviewClosingReady] = useState(false)
   const [candidateAnswerEn, setCandidateAnswerEn] = useState('')
   const [supportivePrompt, setSupportivePrompt] = useState('')
-  const [speechStatus, setSpeechStatus] = useState({ asr: 'browser' })
   const [avatarMode, setAvatarMode] = useState<'2d' | 'heygen' | 'liveavatar'>('2d')
   const avatar = useInterviewAvatar(avatarMode)
   const [llmError, setLlmError] = useState('')
@@ -120,6 +126,8 @@ export function CandidatePortal() {
   const [c1Submitting, setC1Submitting] = useState(false)
   const previewBlobRef = useRef<string | null>(null)
   const parsePreviewKeyRef = useRef<string | null>(null)
+  const interviewTurnsRef = useRef(interviewTurns)
+  const prefetchRef = useRef<FollowUpPrefetch | null>(null)
   const [lastUploadInput, setLastUploadInput] = useState<{
     sampleId: string
     label: string
@@ -162,6 +170,8 @@ export function CandidatePortal() {
 
   function stopInterviewSpeech() {
     avatar.stop()
+    setInterviewDuplexMode(false)
+    prefetchRef.current = null
   }
 
   function appendAvatarTurn(turn: InterviewTurn, add: boolean) {
@@ -198,6 +208,10 @@ export function CandidatePortal() {
 
     return () => { active = false }
   }, [fieldsKey, step])
+
+  useEffect(() => {
+    interviewTurnsRef.current = interviewTurns
+  }, [interviewTurns])
 
   useEffect(() => {
     if (step === 'C3' && !examSubmitted && !examStartedAt) setExamStartedAt(Date.now())
@@ -269,9 +283,6 @@ export function CandidatePortal() {
           setHeyGenAvatarEnabled(heygen)
           setLiveAvatarEnabled(false)
         }
-        setSpeechStatus({
-          asr: status.speech?.asrProvider ?? 'browser',
-        })
       })
       .catch(() => undefined)
   }, [])
@@ -495,8 +506,21 @@ export function CandidatePortal() {
   }
 
   async function handleCandidateAnswerSubmit(ans: string) {
+    const trimmed = ans.trim()
+    if (!trimmed || avatar.isThinking) return
     unlockAudioPlayback()
     setLlmError('')
+
+    const prefetched = prefetchMatchesUtterance(prefetchRef.current, trimmed)
+      ? prefetchRef.current
+      : null
+    prefetchRef.current = null
+
+    if (avatar.isSpeaking) avatar.stop()
+
+    let followUpResult: FollowUpResult | null = null
+    let forceClosing = false
+    let closingText: string | undefined
 
     try {
       await avatar.think(async () => {
@@ -504,7 +528,7 @@ export function CandidatePortal() {
           id: nextTurnId('c-en'),
           speaker: 'candidate' as const,
           language: 'en' as const,
-          text: ans,
+          text: trimmed,
         }
         const updatedTurns = [...interviewTurns, candidateTurn]
         setInterviewTurns(updatedTurns)
@@ -512,20 +536,29 @@ export function CandidatePortal() {
         const answerCount = countCandidateAnswers(updatedTurns)
 
         if (shouldForceInterviewClosing(answerCount)) {
-          await deliverInterviewClosing()
+          forceClosing = true
           return
         }
 
-        const followUp = await generateAvatarFollowUp(ans, updatedTurns)
+        const followUp = prefetched
+          ? await prefetched.promise
+          : await generateAvatarFollowUp(trimmed, updatedTurns)
         if (followUp.mode === 'model') setLlmError('')
+        followUpResult = followUp
 
         if (followUp.action === 'closing') {
-          await deliverInterviewClosing(followUp.text)
-          return
+          forceClosing = true
+          closingText = followUp.text
         }
-
-        await deliverAvatarFollowUp(followUp)
       })
+
+      if (forceClosing) {
+        await deliverInterviewClosing(closingText)
+        return
+      }
+      if (followUpResult) {
+        await deliverAvatarFollowUp(followUpResult)
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'LLM request failed'
       setLlmError(message)
@@ -644,12 +677,20 @@ export function CandidatePortal() {
     return { ...s, locked, lockNote: locked ? lockNote : undefined }
   })
 
+  function handleFreeMicPartialStable(partial: string) {
+    if (avatar.isThinking) return
+    const next = startFollowUpPrefetch(partial, (answer) =>
+      generateAvatarFollowUp(answer, interviewTurnsRef.current),
+    )
+    if (next) prefetchRef.current = next
+  }
+
   function interruptAvatar() {
     if (!avatar.isSpeaking) return
     avatar.stop()
-    avatar.setCaption('I have paused. Please continue when you are ready.')
-    avatar.setExpression('supportive')
-    log('Candidate', 'Avatar interrupted', 'Candidate interrupted the avatar; interview safely paused', 'C4')
+    avatar.setCaption('…')
+    avatar.setExpression('curious')
+    log('Candidate', 'Avatar interrupted', 'Duplex barge-in — candidate speaking over avatar', 'C4')
   }
 
   function requestSupportivePause() {
@@ -1111,6 +1152,8 @@ export function CandidatePortal() {
                   {!interviewStarted ? (
                     <button type="button" className="primary" disabled={avatar.isBusy} onClick={() => {
                       unlockAudioPlayback()
+                      setInterviewDuplexMode(true)
+                      resetDuplexSession()
                       setInterviewClosingReady(false)
                       void (async () => {
                         setLlmError('')
@@ -1174,20 +1217,22 @@ export function CandidatePortal() {
                               ? ` · ${interviewProgress.minRequired}–${interviewProgress.maxAllowed} adaptive questions (minimum ${interviewProgress.minRequired} before wrap-up)`
                               : ` · up to ${interviewProgress.maxAllowed} · AI may close when evidence is sufficient`}
                             {interviewProgress.answered > 0 ? ' · contextual follow-up after each reply' : ''}
-                            {' · '}via microphone or typing.
+                            {' · '}duplex — speak over the avatar; pause to hand off.
                           </p>
-                          <VoiceAnswerInput
-                            key="c4-english-answer"
-                            value={candidateAnswerEn}
-                            onChange={setCandidateAnswerEn}
-                            disabled={avatar.isBusy}
-                            placeholder="Your answer..."
-                            submitLabel={avatar.isThinking ? 'Generating follow-up…' : 'Send answer'}
-                            submitDisabled={avatar.isBusy}
-                            asrProvider={speechStatus.asr}
-                            onSubmit={() => {
+                          <FreeMicPanel
+                            active={!avatar.isConnecting}
+                            llmBusy={avatar.isThinking}
+                            avatarSpeaking={avatar.isSpeaking}
+                            onBargeIn={interruptAvatar}
+                            onPartialStable={handleFreeMicPartialStable}
+                            onUtterance={(text) => { void handleCandidateAnswerSubmit(text) }}
+                            typedValue={candidateAnswerEn}
+                            onTypedChange={setCandidateAnswerEn}
+                            typedPlaceholder="Your answer..."
+                            typedSubmitLabel={avatar.isThinking ? 'Generating follow-up…' : 'Send typed answer'}
+                            onTypedSubmit={() => {
                               const ans = candidateAnswerEn.trim()
-                              if (!ans) return
+                              if (!ans || avatar.isThinking) return
                               void handleCandidateAnswerSubmit(ans)
                             }}
                           />

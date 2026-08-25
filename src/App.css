@@ -2015,6 +2015,57 @@ textarea {
   gap: 0.4rem;
 }
 
+.free-mic-panel {
+  padding: 0.85rem 1rem;
+  border-radius: 0.65rem;
+  border: 1px solid #bfdbfe;
+  background: #f8fafc;
+}
+
+.free-mic-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  justify-content: space-between;
+}
+
+.free-mic-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #64748b;
+  background: #e2e8f0;
+}
+
+.free-mic-badge.live {
+  color: #b91c1c;
+  background: #fef2f2;
+  animation: voicePulse 1.2s ease-in-out infinite;
+}
+
+.free-mic-follow {
+  color: #0369a1;
+  font-weight: 600;
+}
+
+.free-mic-caption {
+  padding: 0.65rem 0.75rem;
+  border-radius: 0.5rem;
+  background: #eff6ff;
+  border: 1px solid #dbeafe;
+}
+
+.free-mic-caption p {
+  margin: 0.3rem 0 0;
+  min-height: 1.35em;
+  color: #1e3a8a;
+}
+
 .interview-loading {
   display: flex;
   align-items: center;
@@ -3075,6 +3126,69 @@ textarea {
   color: #94a3b8;
 }
 
+.jd-rubric-panel {
+  margin-bottom: 1rem;
+  padding: 1rem 1.1rem;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+}
+
+.jd-rubric-panel.compact {
+  margin-bottom: 0.75rem;
+  padding: 0.85rem 1rem;
+}
+
+.jd-rubric-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.jd-rubric-head h3 {
+  margin: 0 0 0.25rem;
+  font-size: 0.95rem;
+  color: #0f3d63;
+}
+
+.jd-rubric-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.65rem 1rem;
+}
+
+.jd-rubric-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.78rem;
+  color: #64748b;
+}
+
+.jd-rubric-label {
+  line-height: 1.25;
+}
+
+.jd-rubric-total {
+  margin: 0.65rem 0 0;
+}
+
+.jd-rubric-total.warn-text {
+  color: #b45309;
+}
+
+.jd-score-formula {
+  margin-top: 0.25rem;
+}
+
+@media (max-width: 900px) {
+  .jd-rubric-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
 .score-summary-dim-label {
   display: flex;
   flex-direction: column;
@@ -3432,6 +3546,11 @@ textarea {
   object-fit: cover;
   object-position: center top;
   background: #0a1628;
+}
+
+.liveavatar-static-talk {
+  transition: opacity 0.12s ease;
+  pointer-events: none;
 }
 
 .liveavatar-static-stage.has-preview {

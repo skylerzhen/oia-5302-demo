@@ -8,6 +8,34 @@ const CHUNK_BYTES = Math.floor(SAMPLE_RATE * BYTES_PER_SAMPLE * (CHUNK_DURATION_
 
 const sessions = new Map()
 
+/** LiveAvatar LITE idle-closes the control WebSocket without periodic keep-alive (~1–2 min). */
+const KEEP_ALIVE_MS = 30_000
+
+function stopKeepAlive(entry) {
+  if (entry?.keepAliveTimer) {
+    clearInterval(entry.keepAliveTimer)
+    entry.keepAliveTimer = null
+  }
+}
+
+function startSessionKeepAlive(ws) {
+  const timer = setInterval(() => {
+    if (ws.readyState !== WebSocket.OPEN) {
+      clearInterval(timer)
+      return
+    }
+    try {
+      ws.send(JSON.stringify({
+        type: 'session.keep_alive',
+        event_id: randomUUID(),
+      }))
+    } catch {
+      clearInterval(timer)
+    }
+  }, KEEP_ALIVE_MS)
+  return timer
+}
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
@@ -129,8 +157,15 @@ export async function openLiveAvatarSession(startResult) {
   const ws = new WebSocket(wsUrl)
   await waitForWsConnected(ws)
 
+  const keepAliveTimer = startSessionKeepAlive(ws)
+  ws.addEventListener('close', () => {
+    const entry = sessions.get(sessionId)
+    if (entry) stopKeepAlive(entry)
+  })
+
   sessions.set(sessionId, {
     ws,
+    keepAliveTimer,
     ...startResult,
     createdAt: Date.now(),
   })
@@ -152,6 +187,7 @@ export async function closeLiveAvatarSession(sessionId) {
   const entry = sessions.get(sessionId)
   if (!entry) return
   sessions.delete(sessionId)
+  stopKeepAlive(entry)
   try {
     entry.ws.close()
   } catch {

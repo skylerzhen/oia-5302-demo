@@ -1,3 +1,4 @@
+import { FINANCE_JOB } from '../data/job'
 import type { MatchDimension } from '../types'
 
 export interface PillarWeights {
@@ -6,6 +7,18 @@ export interface PillarWeights {
   interview: number
 }
 
+export interface JdDimensionWeight {
+  key: string
+  label: string
+  weight: number
+}
+
+export const DEFAULT_JD_DIMENSION_WEIGHTS: JdDimensionWeight[] = FINANCE_JOB.dimensions.map((d) => ({
+  key: d.key,
+  label: d.label,
+  weight: d.weight,
+}))
+
 export const DEFAULT_PILLAR_WEIGHTS: PillarWeights = {
   cvMatch: 40,
   assessment: 30,
@@ -13,6 +26,65 @@ export const DEFAULT_PILLAR_WEIGHTS: PillarWeights = {
 }
 
 const WEIGHTS_STORAGE_KEY = 'oia5302-hr-pillar-weights'
+const JD_WEIGHTS_STORAGE_KEY = 'oia5302-hr-jd-dimension-weights'
+
+export function loadJdDimensionWeights(): JdDimensionWeight[] {
+  try {
+    const raw = sessionStorage.getItem(JD_WEIGHTS_STORAGE_KEY)
+    if (!raw) return DEFAULT_JD_DIMENSION_WEIGHTS.map((d) => ({ ...d }))
+    const parsed = JSON.parse(raw) as Partial<JdDimensionWeight>[]
+    if (!Array.isArray(parsed)) return DEFAULT_JD_DIMENSION_WEIGHTS.map((d) => ({ ...d }))
+    return DEFAULT_JD_DIMENSION_WEIGHTS.map((def) => {
+      const saved = parsed.find((p) => p.key === def.key)
+      return {
+        key: def.key,
+        label: def.label,
+        weight: clampWeight(saved?.weight, def.weight),
+      }
+    })
+  } catch {
+    return DEFAULT_JD_DIMENSION_WEIGHTS.map((d) => ({ ...d }))
+  }
+}
+
+export function saveJdDimensionWeights(weights: JdDimensionWeight[]) {
+  sessionStorage.setItem(JD_WEIGHTS_STORAGE_KEY, JSON.stringify(weights))
+}
+
+export function jdWeightTotal(weights: JdDimensionWeight[]): number {
+  return weights.reduce((sum, w) => sum + w.weight, 0)
+}
+
+/** Apply recruiter JD rubric weights — dimension pct uses original maxScore from LLM. */
+export function applyJdWeights(
+  dimensions: MatchDimension[],
+  jdWeights: JdDimensionWeight[],
+): MatchDimension[] {
+  const byKey = new Map(jdWeights.map((w) => [w.key, w.weight]))
+  return dimensions.map((d) => ({
+    ...d,
+    weight: byKey.get(d.key) ?? d.weight,
+  }))
+}
+
+/** CV–JD match total: Σ(score/maxScore × weight) / Σ(weight) × 100 — same as H1 & H4. */
+export function computeMatchTotalScore(
+  dimensions: MatchDimension[],
+  jdWeights?: JdDimensionWeight[],
+): number {
+  const weighted = jdWeights ? applyJdWeights(dimensions, jdWeights) : dimensions
+  return computeCvScoreFromDimensions(weighted)
+}
+
+export function dimensionAchievementPct(d: MatchDimension): number {
+  if (d.maxScore <= 0) return 0
+  return Math.round((d.score / d.maxScore) * 100)
+}
+
+export function dimensionWeightedContribution(d: MatchDimension): number {
+  const pct = d.maxScore > 0 ? d.score / d.maxScore : 0
+  return Math.round(pct * d.weight * 10) / 10
+}
 
 export function loadPillarWeights(): PillarWeights {
   try {

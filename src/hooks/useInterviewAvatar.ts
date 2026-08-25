@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { InterviewTurn, Viseme } from '../types'
 import type { TtsResult } from '../lib/localAi'
-import { avatarLipSyncBus } from '../lib/avatarLipSyncBus'
 import {
   InterviewAvatarController,
   interviewAvatarStatusMessage,
   type InterviewAvatarUiPhase,
 } from '../lib/interviewAvatarController'
+import { stopActiveSpeech } from '../lib/voiceSpeak'
 import type { AvatarExpression } from '../components/Avatar2DInterviewer'
 
 export function useInterviewAvatar(avatarMode: '2d' | 'heygen' | 'liveavatar') {
@@ -24,8 +24,7 @@ export function useInterviewAvatar(avatarMode: '2d' | 'heygen' | 'liveavatar') {
 
   const stop = useCallback(() => {
     controllerRef.current?.stop()
-    if ('speechSynthesis' in window) window.speechSynthesis.cancel()
-    avatarLipSyncBus.reset()
+    stopActiveSpeech()
     setViseme('rest')
   }, [])
 

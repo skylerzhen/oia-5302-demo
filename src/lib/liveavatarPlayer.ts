@@ -2,6 +2,7 @@ import { Room, RoomEvent, Track } from 'livekit-client'
 import { localAi } from './localAi'
 import { withApiAuthBody } from './apiAuth'
 import { avatarLipSyncBus } from './avatarLipSyncBus'
+import { isInterviewDuplexMode } from './freeMicDuplex'
 
 export interface LiveAvatarCredentials {
   sessionId: string
@@ -53,6 +54,40 @@ function ensureAudioElement() {
   return audioEl
 }
 
+/** Mute LiveKit output during gaps / candidate TTS so streams do not overlap. */
+export function setLiveAvatarOutputMuted(muted: boolean) {
+  if (videoEl) videoEl.muted = muted
+  if (audioEl) audioEl.muted = muted
+}
+
+/** Pause LiveKit output without tearing down the session. */
+export function pauseLiveAvatarOutput() {
+  setLiveAvatarOutputMuted(true)
+}
+
+/** Lower avatar volume while the candidate speaks (duplex ducking). */
+export function duckLiveAvatarOutput() {
+  if (videoEl) {
+    videoEl.muted = false
+    videoEl.volume = 0.18
+  }
+  if (audioEl) {
+    audioEl.muted = false
+    audioEl.volume = 0.18
+  }
+}
+
+export function restoreLiveAvatarOutput() {
+  if (videoEl) {
+    videoEl.muted = false
+    videoEl.volume = 1
+  }
+  if (audioEl) {
+    audioEl.muted = false
+    audioEl.volume = 1
+  }
+}
+
 /** Call on user gesture so LiveKit audio can autoplay later. */
 export function primeLiveAvatarAudioPlayback() {
   if (videoEl) {
@@ -100,6 +135,16 @@ function wireRoomEvents(targetRoom: Room) {
   targetRoom.on(RoomEvent.TrackSubscribed, (track) => attachTrack(track))
   targetRoom.on(RoomEvent.TrackPublished, (publication) => {
     if (publication.track) attachTrack(publication.track)
+  })
+  targetRoom.on(RoomEvent.Reconnected, () => {
+    attachAllRemoteTracks(targetRoom)
+    primeLiveAvatarAudioPlayback()
+  })
+  targetRoom.on(RoomEvent.Disconnected, () => {
+    if (!session || !videoEl) return
+    window.setTimeout(() => {
+      if (session) void connectRoom(session).catch(() => undefined)
+    }, 400)
   })
 }
 
@@ -228,7 +273,7 @@ export async function prepareLiveAvatarForSpeech(timeoutMs = 20_000): Promise<bo
 }
 
 export async function ensureLiveAvatarSession(): Promise<boolean> {
-  if (session && room?.state === 'connected') return true
+  if (session && room?.state === 'connected' && videoEl && videoEl.videoWidth > 0) return true
   if (connectPromise) return connectPromise
 
   connectPromise = (async () => {
@@ -241,6 +286,13 @@ export async function ensureLiveAvatarSession(): Promise<boolean> {
           livekitUrl: started.livekitUrl,
           livekitClientToken: started.livekitClientToken,
         }
+      } else if (room?.state !== 'connected') {
+        try {
+          room?.disconnect()
+        } catch {
+          // ignore
+        }
+        room = null
       }
       if (videoEl) {
         const connected = await connectRoom(session)
@@ -291,6 +343,42 @@ export async function resetLiveAvatarSession() {
 export async function reconnectLiveAvatarVideo() {
   if (!session || !videoEl) return false
   return connectRoom(session)
+}
+
+/** Reconnect LiveKit or recycle the server session when video drops mid-interview. */
+export async function refreshLiveAvatarSession(): Promise<boolean> {
+  if (!videoEl) return false
+
+  if (room?.state === 'connected') {
+    attachAllRemoteTracks(room)
+    primeLiveAvatarAudioPlayback()
+    if (videoEl.videoWidth > 0) return true
+  }
+
+  if (session) {
+    try {
+      room?.disconnect()
+    } catch {
+      // ignore
+    }
+    room = null
+    if (await connectRoom(session) && videoEl.videoWidth > 0) return true
+  }
+
+  const oldSessionId = session?.sessionId
+  session = null
+  room = null
+  connectPromise = null
+
+  if (oldSessionId) {
+    await localAi.liveavatarSessionStop({ sessionId: oldSessionId }).catch(() => undefined)
+  }
+
+  return ensureLiveAvatarSession()
+}
+
+export function liveAvatarVideoHealthy() {
+  return Boolean(videoEl && videoEl.videoWidth > 0 && room?.state === 'connected')
 }
 
 export function liveAvatarVideoReady() {
@@ -359,6 +447,7 @@ export async function speakLiveAvatarOnce(text: string, signal?: AbortSignal): P
   speakInFlight = true
 
   try {
+    restoreLiveAvatarOutput()
     primeLiveAvatarAudioPlayback()
     const ready = await prepareLiveAvatarForSpeech(20_000)
     if (!ready) return false
@@ -372,16 +461,24 @@ export async function speakLiveAvatarOnce(text: string, signal?: AbortSignal): P
       localAi.liveavatarSpeak({ sessionId, text }),
       waitForAbort(LIVEAVATAR_SPEAK_TIMEOUT_MS, signal),
     ])
-    if (!result?.ok) return false
+    if (result?.ok) return true
 
-    // Server already waits for agent.speak_ended over WebSocket — do not poll the
-    // LiveKit video element (idle stream always looks "playing").
-    return true
+    await refreshLiveAvatarSession()
+    const sessionId2 = getLiveAvatarSessionId()
+    if (!sessionId2) return false
+
+    const retry = await Promise.race([
+      localAi.liveavatarSpeak({ sessionId: sessionId2, text }),
+      waitForAbort(LIVEAVATAR_SPEAK_TIMEOUT_MS, signal),
+    ])
+    return Boolean(retry?.ok)
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') throw error
     return false
   } finally {
     avatarLipSyncBus.set({ viseme: 'rest', jawOpen: 0, speaking: false })
+    if (isInterviewDuplexMode()) restoreLiveAvatarOutput()
+    else pauseLiveAvatarOutput()
     speakInFlight = false
   }
 }

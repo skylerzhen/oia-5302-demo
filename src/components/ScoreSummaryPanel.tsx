@@ -3,14 +3,19 @@ import { RotateCcw, Target, FileCheck, MessageSquare } from 'lucide-react'
 import type { CandidateMatch } from '../types'
 import type { InterviewEvaluationReport } from '../lib/interviewReport'
 import {
+  applyJdWeights,
   computeCvScoreFromDimensions,
   computeInterviewScoreFromDimensions,
   computeOverallScore,
+  dimensionAchievementPct,
+  dimensionWeightedContribution,
   DEFAULT_PILLAR_WEIGHTS,
   weightShare,
   pillarContribution,
+  type JdDimensionWeight,
   type PillarWeights,
 } from '../lib/hrScoring'
+import { JdRubricWeightsPanel } from './JdRubricWeightsPanel'
 
 interface ScoreSummaryPanelProps {
   match: CandidateMatch
@@ -18,6 +23,8 @@ interface ScoreSummaryPanelProps {
   interviewReport: InterviewEvaluationReport | null
   weights: PillarWeights
   onWeightsChange: (weights: PillarWeights) => void
+  jdWeights: JdDimensionWeight[]
+  onJdWeightsChange: (weights: JdDimensionWeight[]) => void
 }
 
 type PillarKey = keyof PillarWeights
@@ -34,11 +41,18 @@ export function ScoreSummaryPanel({
   interviewReport,
   weights,
   onWeightsChange,
+  jdWeights,
+  onJdWeightsChange,
 }: ScoreSummaryPanelProps) {
 
+  const weightedDimensions = useMemo(
+    () => applyJdWeights(match.dimensions, jdWeights),
+    [match.dimensions, jdWeights],
+  )
+
   const cvScore = useMemo(
-    () => computeCvScoreFromDimensions(match.dimensions),
-    [match.dimensions],
+    () => computeCvScoreFromDimensions(weightedDimensions),
+    [weightedDimensions],
   )
 
   const interviewScore = useMemo(
@@ -81,6 +95,8 @@ export function ScoreSummaryPanel({
           <RotateCcw size={14} /> Reset weights
         </button>
       </header>
+
+      <JdRubricWeightsPanel weights={jdWeights} onChange={onJdWeightsChange} compact />
 
       <div className="score-summary-composite">
         <div className="score-summary-composite-main">
@@ -128,9 +144,12 @@ export function ScoreSummaryPanel({
             </div>
           </div>
           <div className="score-summary-breakdown">
-            <span className="tiny muted">Dimension breakdown (weight × score)</span>
-            {match.dimensions.map((d) => {
-              const pct = d.maxScore > 0 ? Math.round((d.score / d.maxScore) * 100) : 0
+            <span className="tiny muted">
+              Dimension breakdown — achievement % × JD weight (Σ ÷ {weightedDimensions.reduce((s, d) => s + d.weight, 0)} = {cvScore}%)
+            </span>
+            {weightedDimensions.map((d) => {
+              const pct = dimensionAchievementPct(d)
+              const contrib = dimensionWeightedContribution(d)
               return (
                 <div key={d.key} className="score-summary-dim">
                   <span className="score-summary-dim-label">
@@ -143,7 +162,7 @@ export function ScoreSummaryPanel({
                       style={{ width: `${pct}%` }}
                     />
                   </div>
-                  <span className="score-summary-pct">{pct}%</span>
+                  <span className="score-summary-pct">{pct}% · +{contrib}</span>
                 </div>
               )
             })}

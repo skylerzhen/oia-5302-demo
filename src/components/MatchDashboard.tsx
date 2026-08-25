@@ -1,5 +1,13 @@
 import { Eye } from 'lucide-react'
 import { controlledViewUrl } from '../lib/controlledDocUrl'
+import {
+  applyJdWeights,
+  computeMatchTotalScore,
+  dimensionAchievementPct,
+  dimensionWeightedContribution,
+  type JdDimensionWeight,
+} from '../lib/hrScoring'
+import { JdRubricWeightsPanel } from './JdRubricWeightsPanel'
 import type { CandidateMatch } from '../types'
 
 interface MatchDashboardProps {
@@ -10,6 +18,8 @@ interface MatchDashboardProps {
   onEvidence: (title: string, evidence: string, documentText: string) => void
   onOpenSource: (title: string, url: string) => void
   onViewJourney: (candidateId: string) => void
+  jdWeights: JdDimensionWeight[]
+  onJdWeightsChange: (weights: JdDimensionWeight[]) => void
 }
 
 export function MatchDashboard({
@@ -20,13 +30,23 @@ export function MatchDashboard({
   onEvidence,
   onOpenSource,
   onViewJourney,
+  jdWeights,
+  onJdWeightsChange,
 }: MatchDashboardProps) {
   const selected = matches.find((m) => m.candidateId === selectedId) ?? matches[0]
-  const qualifiedCount = matches.filter((m) => m.qualified).length
-  const avgScore = Math.round(matches.reduce((s, m) => s + m.totalScore, 0) / matches.length)
+  const qualifiedCount = matches.filter((m) => computeMatchTotalScore(m.dimensions, jdWeights) >= 60).length
+  const avgScore = matches.length
+    ? Math.round(
+        matches.reduce((s, m) => s + computeMatchTotalScore(m.dimensions, jdWeights), 0) / matches.length,
+      )
+    : 0
+  const selectedDims = selected ? applyJdWeights(selected.dimensions, jdWeights) : []
+  const selectedScore = selected ? computeMatchTotalScore(selected.dimensions, jdWeights) : 0
 
   return (
     <div className="dashboard">
+      <JdRubricWeightsPanel weights={jdWeights} onChange={onJdWeightsChange} compact />
+
       <div className="kpi-row">
         <div className="kpi-card">
           <span>Candidates in pool</span>
@@ -61,7 +81,10 @@ export function MatchDashboard({
               </tr>
             </thead>
             <tbody>
-              {matches.map((m, idx) => (
+              {matches.map((m, idx) => {
+                const matchScore = computeMatchTotalScore(m.dimensions, jdWeights)
+                const qualified = matchScore >= 60
+                return (
                 <tr
                   key={m.candidateId}
                   className={m.candidateId === selected?.candidateId ? 'selected-row' : ''}
@@ -71,15 +94,15 @@ export function MatchDashboard({
                   <td><strong>{m.candidate.name}</strong></td>
                   <td>
                     <div className="bar-cell">
-                      <div className="bar-track"><div className="bar-fill" style={{ width: `${m.totalScore}%` }} /></div>
-                      <span>{m.totalScore}%</span>
+                      <div className="bar-track"><div className="bar-fill" style={{ width: `${matchScore}%` }} /></div>
+                      <span>{matchScore}%</span>
                     </div>
                   </td>
                   <td>{m.matchedCount}/{m.totalDimensions}</td>
                   <td>{m.candidate.yearsExperience} yrs</td>
-                  <td><span className={`status-pill ${m.qualified ? 'ok' : 'no'}`}>{m.qualified ? 'Qualified' : 'Disqualified'}</span></td>
+                  <td><span className={`status-pill ${qualified ? 'ok' : 'no'}`}>{qualified ? 'Qualified' : 'Disqualified'}</span></td>
                 </tr>
-              ))}
+              )})}
             </tbody>
           </table>
         </div>
@@ -88,7 +111,10 @@ export function MatchDashboard({
           <div className="card detail-panel">
             <h3>{selected.candidate.name}</h3>
             <p className="muted">{selected.candidate.education}</p>
-            <p><strong>{selected.totalScore}%</strong> overall · {selected.matchedCount}/{selected.totalDimensions} dimensions matched</p>
+            <p><strong>{selectedScore}%</strong> CV–JD match · {selected.matchedCount}/{selected.totalDimensions} dimensions matched</p>
+            <p className="tiny muted jd-score-formula">
+              Σ(dimension % × JD weight) ÷ Σ(weights) — same formula as H4 composite CV pillar
+            </p>
             <div className="candidate-actions">
               <button
                 type="button"
@@ -109,14 +135,18 @@ export function MatchDashboard({
             </div>
             <h4>Dimension breakdown</h4>
             <ul className="dim-bars">
-              {selected.dimensions.map((d) => {
-                const pct = Math.round((d.score / d.maxScore) * 100)
+              {selectedDims.map((d) => {
+                const pct = dimensionAchievementPct(d)
+                const contrib = dimensionWeightedContribution(d)
                 return (
                   <li key={d.key}>
                     <button type="button" className="dim-bar-btn" onClick={() => onEvidence(d.label, d.evidence, selected.candidate.cvText)}>
-                      <span>{d.label}</span>
+                      <span>
+                        {d.label}
+                        <em className="score-dim-weight">w={d.weight}</em>
+                      </span>
                       <div className="bar-track"><div className={`bar-fill ${d.matched ? 'match' : 'weak'}`} style={{ width: `${pct}%` }} /></div>
-                      <span>{pct}%</span>
+                      <span>{pct}% · +{contrib}</span>
                     </button>
                   </li>
                 )

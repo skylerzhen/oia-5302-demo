@@ -1,3 +1,5 @@
+import { AVATAR2D_BASE_SRC, AVATAR2D_TALK_SRC } from '../lib/avatar2dMouth'
+
 interface LiveAvatarStaticProps {
   speaking: boolean
 }
@@ -5,22 +7,25 @@ interface LiveAvatarStaticProps {
 export function LiveAvatarStatic({ speaking }: LiveAvatarStaticProps) {
   return (
     <div
-      className={`avatar-stage liveavatar-static-stage ${speaking ? 'speaking' : ''}`}
+      className={`avatar-stage liveavatar-static-stage has-preview ${speaking ? 'speaking' : ''}`}
       aria-label="LiveAvatar interview recording (static playback)"
     >
       <div className="liveavatar-static-frame">
-        <div className="liveavatar-static-placeholder">
-          <div className="liveavatar-static-avatar">
-            <div className="liveavatar-static-head">
-              <div className="liveavatar-static-face">
-                <div className="liveavatar-eye left"></div>
-                <div className="liveavatar-eye right"></div>
-                <div className={`liveavatar-mouth ${speaking ? 'talking' : ''}`}></div>
-              </div>
-            </div>
-          </div>
-          {speaking && <div className="liveavatar-static-wave" />}
-        </div>
+        <img
+          className="liveavatar-static-preview"
+          src={AVATAR2D_BASE_SRC}
+          alt="LiveAvatar recording"
+          draggable={false}
+        />
+        <img
+          className="liveavatar-static-preview liveavatar-static-talk"
+          src={AVATAR2D_TALK_SRC}
+          alt=""
+          aria-hidden
+          draggable={false}
+          style={{ opacity: speaking ? 0.78 : 0 }}
+        />
+        {speaking && <div className="liveavatar-static-wave" />}
         <div className="liveavatar-static-badge">
           <span className="liveavatar-static-dot"></span>
           LiveAvatar Recording

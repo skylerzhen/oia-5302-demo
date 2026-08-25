@@ -16,11 +16,15 @@ import { FINANCE_JOB } from '../data/job'
 import { HR_STEPS } from '../lib/demo'
 import { localAi, type AssessmentResult } from '../lib/localAi'
 import {
-  computeCvScoreFromDimensions,
   computeInterviewScoreFromDimensions,
+  computeMatchTotalScore,
   computeOverallScore,
+  loadJdDimensionWeights,
   loadPillarWeights,
+  saveJdDimensionWeights,
   savePillarWeights,
+  applyJdWeights,
+  type JdDimensionWeight,
   type PillarWeights,
 } from '../lib/hrScoring'
 import { rankCandidates, type CandidateMatchWithTips } from '../lib/matching'
@@ -54,19 +58,21 @@ export function HrPortal() {
   const [matchLoading, setMatchLoading] = useState(false)
   const [journeyCandidate, setJourneyCandidate] = useState<string | null>(null)
   const [pillarWeights, setPillarWeights] = useState<PillarWeights>(() => loadPillarWeights())
+  const [jdWeights, setJdWeights] = useState<JdDimensionWeight[]>(() => loadJdDimensionWeights())
 
-  const matchesMemo = matches
-  const filtered = matchesMemo.filter((m) => {
-    if (filters.skill && !m.candidate.skills.some((s) => s.toLowerCase().includes(filters.skill.toLowerCase()))) return false
-    if (filters.minYears && m.candidate.yearsExperience < filters.minYears) return false
-    if (filters.degree && !m.candidate.education.toLowerCase().includes(filters.degree.toLowerCase())) return false
-    return true
-  })
+  const filtered = useMemo(() => {
+    return matches.filter((m) => {
+      if (filters.skill && !m.candidate.skills.some((s) => s.toLowerCase().includes(filters.skill.toLowerCase()))) return false
+      if (filters.minYears && m.candidate.yearsExperience < filters.minYears) return false
+      if (filters.degree && !m.candidate.education.toLowerCase().includes(filters.degree.toLowerCase())) return false
+      return true
+    }).sort((a, b) => computeMatchTotalScore(b.dimensions, jdWeights) - computeMatchTotalScore(a.dimensions, jdWeights))
+  }, [matches, filters, jdWeights])
 
-  const selected = matchesMemo.find((m) => m.candidateId === selectedId) ?? matchesMemo[0]
+  const selected = filtered.find((m) => m.candidateId === selectedId) ?? filtered[0]
   const cvScore = useMemo(
-    () => computeCvScoreFromDimensions(selected.dimensions),
-    [selected.dimensions],
+    () => computeMatchTotalScore(selected?.dimensions ?? [], jdWeights),
+    [selected?.dimensions, jdWeights],
   )
   const interviewPillarScore = useMemo(
     () =>
@@ -96,15 +102,26 @@ export function HrPortal() {
       'H4',
     )
   }
+
+  function handleJdWeightsChange(next: JdDimensionWeight[]) {
+    setJdWeights(next)
+    saveJdDimensionWeights(next)
+    log(
+      'Recruiter',
+      'JD rubric weights adjusted',
+      next.map((w) => `${w.key}=${w.weight}`).join(' · '),
+      'H1',
+    )
+  }
   const readyForInterviewReview = pipeline.interviewCompleted || interviewTurns.length > 0
   const fieldsKey = useMemo(() => profileFieldsKey(fields), [fields])
   const assessmentKey = useMemo(
     () => buildAssessmentKey({
       assessmentScore,
-      matchScore: selected.totalScore,
+      matchScore: cvScore,
       turns: interviewTurns,
     }),
-    [assessmentScore, interviewTurns, selected.totalScore],
+    [assessmentScore, interviewTurns, cvScore],
   )
 
   useEffect(() => {
@@ -140,7 +157,7 @@ export function HrPortal() {
     cachedLlmAssessment(assessmentKey, () => localAi.generateAssessment({
       turns: interviewTurns,
       assessmentScore,
-      matchScore: selected.totalScore,
+      matchScore: cvScore,
       jobTitle: FINANCE_JOB.title,
     }))
       .then((report) => {
@@ -189,16 +206,20 @@ export function HrPortal() {
 
   function exportCsv() {
     const dimensions = matches[0]?.dimensions.map((dimension) => dimension.label) ?? []
-    const header = ['Name', 'Score', 'Qualified', 'Matched', 'Years', 'Degree', ...dimensions]
-    const rows = filtered.map((match) => [
+    const header = ['Name', 'CV-JD Match %', 'Qualified', 'Matched', 'Years', 'Degree', ...dimensions]
+    const rows = filtered.map((match) => {
+      const score = computeMatchTotalScore(match.dimensions, jdWeights)
+      const weighted = applyJdWeights(match.dimensions, jdWeights)
+      return [
       match.candidate.name,
-      `${match.totalScore}%`,
-      match.qualified ? 'Yes' : 'No',
+      `${score}%`,
+      score >= 60 ? 'Yes' : 'No',
       `${match.matchedCount}/${match.totalDimensions}`,
       match.candidate.yearsExperience,
       match.candidate.education,
-      ...match.dimensions.map((dimension) => `${Math.round((dimension.score / dimension.maxScore) * 100)}%`),
-    ].map((value) => `"${String(value).replaceAll('"', '""')}"`).join(','))
+      ...weighted.map((dimension) => `${Math.round((dimension.score / dimension.maxScore) * 100)}%`),
+    ].map((value) => `"${String(value).replaceAll('"', '""')}"`).join(',')
+    })
     const csv = [header.join(','), ...rows].join('\n')
     const blob = new Blob([csv], { type: 'text/csv' })
     const url = URL.createObjectURL(blob)
@@ -256,6 +277,8 @@ export function HrPortal() {
             matches={filtered}
             selectedId={selectedId}
             onSelect={setSelectedId}
+            jdWeights={jdWeights}
+            onJdWeightsChange={handleJdWeightsChange}
             onEvidence={(title, evidence, documentText) =>
               setEvidenceModal({ title, evidence, source: documentText })
             }
@@ -277,6 +300,7 @@ export function HrPortal() {
 
           <CurrentCandidateCard
             candidate={selected}
+            cvMatchScore={cvScore}
             onChangeCandidate={() => setStep('H1')}
           />
 
@@ -317,6 +341,7 @@ export function HrPortal() {
 
           <CurrentCandidateCard
             candidate={selected}
+            cvMatchScore={cvScore}
             onChangeCandidate={() => setStep('H1')}
           />
           <div className="kpi-row compact">
@@ -345,6 +370,7 @@ export function HrPortal() {
 
           <CurrentCandidateCard
             candidate={selected}
+            cvMatchScore={cvScore}
             onChangeCandidate={() => setStep('H1')}
           />
 
@@ -354,6 +380,8 @@ export function HrPortal() {
             interviewReport={interviewReport}
             weights={pillarWeights}
             onWeightsChange={handlePillarWeightsChange}
+            jdWeights={jdWeights}
+            onJdWeightsChange={handleJdWeightsChange}
           />
 
           <div className="card stack">

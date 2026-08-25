@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import {
   ensureLiveAvatarSession,
   getLiveAvatarLastError,
+  liveAvatarVideoHealthy,
+  refreshLiveAvatarSession,
   reconnectLiveAvatarVideo,
   setLiveAvatarVideoElement,
 } from '../lib/liveavatarPlayer'
@@ -83,6 +85,29 @@ export function LiveAvatarStage({ active, sessionActive, className }: LiveAvatar
       video.removeEventListener('loadeddata', onPlaying)
     }
   }, [])
+
+  useEffect(() => {
+    if (!sessionActive) return
+
+    const timer = window.setInterval(() => {
+      if (liveAvatarVideoHealthy()) {
+        setStatus((current) => (current === 'ready' ? current : 'ready'))
+        return
+      }
+      setStatus('connecting')
+      void refreshLiveAvatarSession().then((ok) => {
+        if (ok && liveAvatarVideoHealthy()) {
+          setStatus('ready')
+          setErrorMessage('')
+        } else if (!ok) {
+          setStatus('error')
+          setErrorMessage(getLiveAvatarLastError() ?? 'LiveAvatar video reconnect failed')
+        }
+      })
+    }, 20_000)
+
+    return () => window.clearInterval(timer)
+  }, [sessionActive])
 
   return (
     <div className={`liveavatar-stage${className ? ` ${className}` : ''}`}>
