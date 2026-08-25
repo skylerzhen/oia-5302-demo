@@ -27,8 +27,13 @@ alwaysApply: true
    - 若有关键里程碑，同步更新 `docs/progress/conversation-history.md` 对应日期小节
    - 更新 `docs/daily-logs/README.md` 索引表（若该日尚未列入）
 
-3. **更新 CHANGELOG**（若有用户可见的功能/fix）
-   - 在 `[Unreleased]` 下追加条目；重大里程碑才 bump `VERSION`
+3. **更新 CHANGELOG + 版本号**（若有用户可见的功能/fix）
+   - 在 `[Unreleased]` 下追加条目
+   - **同一 PR/收工批次内**：若已有 `[Unreleased]` 条目且当天有功能/fix 合并，必须 **cut release**：
+     - bump `VERSION` + `package.json` + `package-lock.json`（三者保持一致）
+     - 将 `[Unreleased]` 移入新节 `## [x.y.z] - YYYY-MM-DD`，清空 `[Unreleased]`
+     - `git tag -a vx.y.z -m "…"` 并 `git push origin main --tags`
+   - **禁止**只改代码不碰 `VERSION`/`CHANGELOG`；**禁止**单独改 `VERSION` 而不更新 `CHANGELOG` 与 `package.json`
 
 4. **Git 提交并推送**
    ```bash

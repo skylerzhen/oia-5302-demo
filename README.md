@@ -118,10 +118,16 @@ git push origin main
 
 ## 版本发布
 
+**单一真相源：** 根目录 [`VERSION`](./VERSION) = [`package.json`](./package.json) `version` = Git tag（如 `v0.4.0`）。  
+每次 **minor 功能里程碑** 或 **收工发布** 应同时更新：`VERSION` + `package.json` + `CHANGELOG.md`（新建 `[x.y.z]` 节）+ `git tag`.
+
 ```bash
-# 更新 VERSION + CHANGELOG 后
-git tag -a v0.3.0 -m "release notes"
-git push origin v0.3.0
+# 示例：发布 0.4.0
+# 1. 编辑 VERSION、package.json、CHANGELOG.md
+git add VERSION package.json package-lock.json CHANGELOG.md
+git commit -m "release: v0.4.0 — …"
+git tag -a v0.4.0 -m "v0.4.0: …"
+git push origin main --tags
 ```
 
 ## License

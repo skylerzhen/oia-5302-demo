@@ -5,16 +5,30 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Versioning foll
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-26
+
 ### Added
+- **HR H1 Interview setup** — custom questions + JD six-dimension question set; C4 orchestrator asks fixed queue then adaptive LLM follow-ups (RFP §6.7)
+- **C4 full-duplex free-mic** — always-on browser ASR, barge-in, partial prefetch with cooldown
+- LiveAvatar server **session keep-alive** (30s) to prevent ~1 min black screen
+- Governed **JD interview question bank** (`jdInterviewQuestions.ts`, separate from S5 MCQ bank)
 - C1 evidence locate-in-CV, PDF/image preview, upload stepper, Review & submit scroll-to-bottom
-- C4 adaptive interview (5–10 questions, LLM closing); `interviewAvatarController` single-flight speak
 - HR H4 editable weighted composite scoring (CV / assessment / interview pillars)
 
+### Fixed
+- **CV-JD match score unified H1–H4** — always derived from dimension scores; ignore LLM-declared `totalScore`
+- H5 duplicate audit «LLM interview assessment generated» — drop `matchScore` from `assessmentKey`; log only on real LLM fetch
+- H3 LiveAvatar idle overlay showed candidate C4 «Start interview / billing» copy — HR replay wording
+- freeMic ASR infinite restart on permission errors (circuit breaker + backoff)
+- LiveKit reconnect storm (exponential backoff, max attempts, pause health refresh)
+- `audioSyncedLipSync` hang when `playing` event never fires (3s timeout)
+- C4 follow-up prefetch LLM waste during long answers (cooldown + min growth)
+
 ### Changed
-- README: document LiveAvatar Lite cloud stack (2D is fallback only, not primary demo mode)
-- LiveAvatar speak: trust server `speak_ended` instead of polling LiveKit video element
-- Global UI: replace legacy teal/green accents with OIA navy design tokens (`App.css`, `index.css`)
-- Primary demo URL: https://oia-recruitment.uiscloud.cc
+- README: HR setup, duplex C4, API cost guards, primary URL `oia-recruitment.uiscloud.cc`
+- LiveAvatar speak path + session lifecycle hardening
+- Global UI: OIA navy design tokens
+- `App.tsx` session persist debounced 300ms
 
 ## [0.3.0] - 2026-08-19
 
@@ -80,7 +94,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Versioning foll
 ### Paused
 - 3D Avatar VRoid lip-sync enabled when `public/avatar/oia-vroid-interviewer.vrm` present (demo uses AvatarSample_B)
 
-[Unreleased]: https://github.com/skylerzhen/oia-5302-demo/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/skylerzhen/oia-5302-demo/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/skylerzhen/oia-5302-demo/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/skylerzhen/oia-5302-demo/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/skylerzhen/oia-5302-demo/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/skylerzhen/oia-5302-demo/releases/tag/v0.1.0
