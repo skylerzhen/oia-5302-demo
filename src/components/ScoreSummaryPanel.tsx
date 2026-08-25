@@ -1,38 +1,120 @@
-import { Target, FileCheck, MessageSquare } from 'lucide-react'
+import { useMemo, type ReactNode } from 'react'
+import { RotateCcw, Target, FileCheck, MessageSquare } from 'lucide-react'
 import type { CandidateMatch } from '../types'
 import type { InterviewEvaluationReport } from '../lib/interviewReport'
+import {
+  computeCvScoreFromDimensions,
+  computeInterviewScoreFromDimensions,
+  computeOverallScore,
+  DEFAULT_PILLAR_WEIGHTS,
+  weightShare,
+  pillarContribution,
+  type PillarWeights,
+} from '../lib/hrScoring'
 
 interface ScoreSummaryPanelProps {
   match: CandidateMatch
   assessmentScore: number
   interviewReport: InterviewEvaluationReport | null
+  weights: PillarWeights
+  onWeightsChange: (weights: PillarWeights) => void
 }
 
-export function ScoreSummaryPanel({ match, assessmentScore, interviewReport }: ScoreSummaryPanelProps) {
-  const avgInterviewScore = interviewReport
-    ? Math.round(
-        interviewReport.dimensions.reduce((sum, d) => sum + d.score, 0) /
-          interviewReport.dimensions.length,
-      )
-    : 0
+type PillarKey = keyof PillarWeights
+
+const PILLAR_LABELS: Record<PillarKey, string> = {
+  cvMatch: 'CV-JD Matching',
+  assessment: 'Technical Assessment',
+  interview: 'Interview Evaluation',
+}
+
+export function ScoreSummaryPanel({
+  match,
+  assessmentScore,
+  interviewReport,
+  weights,
+  onWeightsChange,
+}: ScoreSummaryPanelProps) {
+
+  const cvScore = useMemo(
+    () => computeCvScoreFromDimensions(match.dimensions),
+    [match.dimensions],
+  )
+
+  const interviewScore = useMemo(
+    () =>
+      interviewReport
+        ? computeInterviewScoreFromDimensions(interviewReport.dimensions)
+        : null,
+    [interviewReport],
+  )
+
+  const overallScore = useMemo(
+    () => computeOverallScore(cvScore, assessmentScore, interviewScore, weights),
+    [cvScore, assessmentScore, interviewScore, weights],
+  )
+
+  function updateWeight(key: PillarKey, raw: string) {
+    onWeightsChange({
+      ...weights,
+      [key]: Math.min(100, Math.max(0, Number(raw) || 0)),
+    })
+  }
+
+  function resetWeights() {
+    onWeightsChange({ ...DEFAULT_PILLAR_WEIGHTS })
+  }
+
+  const weightTotal = weights.cvMatch + weights.assessment + weights.interview
 
   return (
     <div className="score-summary-panel card">
-      <h2>Complete Scoring Overview</h2>
-      <p className="muted">
-        Comprehensive evaluation across CV-JD matching, technical assessment, and interview performance
-      </p>
+      <header className="score-summary-head">
+        <div>
+          <h2>Complete Scoring Overview</h2>
+          <p className="muted">
+            Weighted composite across CV–JD matching, technical assessment, and interview — weights are
+            recruiter-configurable (versioned rubric).
+          </p>
+        </div>
+        <button type="button" className="ghost-btn score-weight-reset" onClick={resetWeights}>
+          <RotateCcw size={14} /> Reset weights
+        </button>
+      </header>
+
+      <div className="score-summary-composite">
+        <div className="score-summary-composite-main">
+          <span className="tiny muted">Overall weighted score</span>
+          <strong>{overallScore}%</strong>
+        </div>
+        <div className="score-summary-composite-formula">
+          <span className="tiny muted">Formula</span>
+          <p>
+            ({cvScore}% × {weightShare(weights.cvMatch, weights)}%) + ({assessmentScore}% ×{' '}
+            {weightShare(weights.assessment, weights)}%)
+            {interviewScore != null && (
+              <>
+                {' '}
+                + ({interviewScore}% × {weightShare(weights.interview, weights)}%)
+              </>
+            )}
+          </p>
+          {weightTotal === 0 && (
+            <p className="danger-text tiny">Set at least one pillar weight above zero.</p>
+          )}
+        </div>
+      </div>
 
       <div className="score-summary-grid">
-        <div className="score-summary-card">
-          <div className="score-summary-header">
-            <Target size={20} />
-            <h3>CV-JD Matching</h3>
-          </div>
-          <div className="score-summary-main-score">
-            <strong>{match.totalScore}%</strong>
-            <span>Overall Match</span>
-          </div>
+        <PillarCard
+          icon={<Target size={20} />}
+          title={PILLAR_LABELS.cvMatch}
+          score={cvScore}
+          weight={weights.cvMatch}
+          weightShare={weightShare(weights.cvMatch, weights)}
+          contribution={pillarContribution(cvScore, weights.cvMatch, weights)}
+          onWeightChange={(v) => updateWeight('cvMatch', v)}
+        >
           <div className="score-summary-metrics">
             <div className="score-summary-metric">
               <span>Matched Dimensions</span>
@@ -46,31 +128,37 @@ export function ScoreSummaryPanel({ match, assessmentScore, interviewReport }: S
             </div>
           </div>
           <div className="score-summary-breakdown">
-            <span className="tiny muted">Dimension Breakdown</span>
+            <span className="tiny muted">Dimension breakdown (weight × score)</span>
             {match.dimensions.map((d) => {
-              const pct = Math.round((d.score / d.maxScore) * 100)
+              const pct = d.maxScore > 0 ? Math.round((d.score / d.maxScore) * 100) : 0
               return (
                 <div key={d.key} className="score-summary-dim">
-                  <span>{d.label}</span>
+                  <span className="score-summary-dim-label">
+                    {d.label}
+                    <em className="score-dim-weight">w={d.weight}</em>
+                  </span>
                   <div className="bar-track">
-                    <div className={`bar-fill ${d.matched ? 'match' : 'weak'}`} style={{ width: `${pct}%` }} />
+                    <div
+                      className={`bar-fill ${d.matched ? 'match' : 'weak'}`}
+                      style={{ width: `${pct}%` }}
+                    />
                   </div>
                   <span className="score-summary-pct">{pct}%</span>
                 </div>
               )
             })}
           </div>
-        </div>
+        </PillarCard>
 
-        <div className="score-summary-card">
-          <div className="score-summary-header">
-            <FileCheck size={20} />
-            <h3>Technical Assessment</h3>
-          </div>
-          <div className="score-summary-main-score">
-            <strong>{assessmentScore}%</strong>
-            <span>MCQ Score</span>
-          </div>
+        <PillarCard
+          icon={<FileCheck size={20} />}
+          title={PILLAR_LABELS.assessment}
+          score={assessmentScore}
+          weight={weights.assessment}
+          weightShare={weightShare(weights.assessment, weights)}
+          contribution={pillarContribution(assessmentScore, weights.assessment, weights)}
+          onWeightChange={(v) => updateWeight('assessment', v)}
+        >
           <div className="score-summary-metrics">
             <div className="score-summary-metric">
               <span>Benchmark</span>
@@ -87,39 +175,45 @@ export function ScoreSummaryPanel({ match, assessmentScore, interviewReport }: S
             Role-specific multiple-choice questions covering portfolio analysis, risk reporting, and Excel
             modeling
           </p>
-        </div>
+        </PillarCard>
 
-        <div className="score-summary-card">
-          <div className="score-summary-header">
-            <MessageSquare size={20} />
-            <h3>Interview Evaluation</h3>
-          </div>
+        <PillarCard
+          icon={<MessageSquare size={20} />}
+          title={PILLAR_LABELS.interview}
+          score={interviewScore}
+          weight={weights.interview}
+          weightShare={weightShare(weights.interview, weights)}
+          contribution={
+            interviewScore != null
+              ? pillarContribution(interviewScore, weights.interview, weights)
+              : null
+          }
+          onWeightChange={(v) => updateWeight('interview', v)}
+        >
           {interviewReport ? (
-            <>
-              <div className="score-summary-main-score">
-                <strong>{avgInterviewScore}%</strong>
-                <span>Avg Score</span>
-              </div>
-              <div className="score-summary-breakdown">
-                <span className="tiny muted">LLM-Generated Dimension Scores</span>
-                {interviewReport.dimensions.map((dim) => (
+            <div className="score-summary-breakdown">
+              <span className="tiny muted">LLM dimension scores (equal weight within pillar)</span>
+              {interviewReport.dimensions.map((dim) => {
+                const pct =
+                  dim.maxScore > 0 ? Math.round((dim.score / dim.maxScore) * 100) : dim.score
+                return (
                   <div key={dim.label} className="score-summary-dim">
                     <span>{dim.label}</span>
                     <div className="bar-track">
                       <div
-                        className={`bar-fill ${dim.score >= 60 ? 'match' : 'weak'}`}
-                        style={{ width: `${dim.score}%` }}
+                        className={`bar-fill ${pct >= 60 ? 'match' : 'weak'}`}
+                        style={{ width: `${pct}%` }}
                       />
                     </div>
-                    <span className="score-summary-pct">{dim.score}%</span>
+                    <span className="score-summary-pct">{pct}%</span>
                   </div>
-                ))}
-              </div>
-            </>
+                )
+              })}
+            </div>
           ) : (
             <p className="muted">LLM assessment pending or unavailable</p>
           )}
-        </div>
+        </PillarCard>
       </div>
 
       <div className="score-summary-overall">
@@ -127,7 +221,9 @@ export function ScoreSummaryPanel({ match, assessmentScore, interviewReport }: S
         <div className="score-summary-profile-grid">
           <div>
             <span className="tiny muted">Name</span>
-            <p><strong>{match.candidate.name}</strong></p>
+            <p>
+              <strong>{match.candidate.name}</strong>
+            </p>
           </div>
           <div>
             <span className="tiny muted">Education</span>
@@ -143,6 +239,61 @@ export function ScoreSummaryPanel({ match, assessmentScore, interviewReport }: S
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+function PillarCard({
+  icon,
+  title,
+  score,
+  weight,
+  weightShare,
+  contribution,
+  onWeightChange,
+  children,
+}: {
+  icon: ReactNode
+  title: string
+  score: number | null
+  weight: number
+  weightShare: number
+  contribution: number | null
+  onWeightChange: (value: string) => void
+  children: ReactNode
+}) {
+  return (
+    <div className="score-summary-card">
+      <div className="score-summary-header">
+        {icon}
+        <h3>{title}</h3>
+      </div>
+
+      <label className="score-weight-control">
+        <span>Pillar weight</span>
+        <div className="score-weight-input-row">
+          <input
+            type="number"
+            min={0}
+            max={100}
+            step={5}
+            value={weight}
+            onChange={(e) => onWeightChange(e.target.value)}
+            aria-label={`${title} weight`}
+          />
+          <span className="score-weight-share">→ {weightShare}% of composite</span>
+        </div>
+      </label>
+
+      <div className="score-summary-main-score">
+        <strong>{score != null ? `${score}%` : '—'}</strong>
+        <span>Pillar score</span>
+        {contribution != null && (
+          <em className="score-contribution">Contributes ~{contribution} pts to overall</em>
+        )}
+      </div>
+
+      {children}
     </div>
   )
 }

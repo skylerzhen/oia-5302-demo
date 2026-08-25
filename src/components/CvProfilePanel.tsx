@@ -46,7 +46,7 @@ function ScalarFieldRow({
         />
       )}
       {(field.evidence || field.source) && (
-        <button type="button" className="linkish" onClick={onEvidence}>Evidence</button>
+        <button type="button" className="linkish evidence-locate-btn" onClick={onEvidence}>Locate in CV</button>
       )}
     </label>
   )
@@ -88,7 +88,7 @@ function TagGroupSection({
         />
       )}
       {(group.evidence || group.source) && (
-        <button type="button" className="linkish" onClick={onEvidence}>Evidence</button>
+        <button type="button" className="linkish evidence-locate-btn" onClick={onEvidence}>Locate in CV</button>
       )}
     </section>
   )
@@ -158,10 +158,10 @@ export function CvProfilePanel({
                 {(entry.evidence || entry.source) && (
                   <button
                     type="button"
-                    className="linkish"
+                    className="linkish evidence-locate-btn"
                     onClick={() => onEvidence?.(`${entry.title || 'Role'} — evidence`, entry.evidence, entry.source)}
                   >
-                    Evidence
+                    Locate in CV
                   </button>
                 )}
               </article>

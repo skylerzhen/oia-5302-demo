@@ -195,28 +195,44 @@ export async function handleFollowUp(body) {
     profile.companyName ? `Current employer: ${profile.companyName}` : '',
   ].filter(Boolean).join(' · ')
 
+  const MIN = 5
+  const MAX = 10
+
   const user = [
     profileLine ? `Candidate profile: ${profileLine}` : '',
     transcript ? `Transcript so far:\n${transcript}` : '',
     `Latest candidate answer (quote a specific term from this answer in your follow-up):\n"""${answer}"""`,
-    `Follow-up round ${candidateRound} of 3.`,
+    `Adaptive interview — candidate answer ${candidateRound} of ${MIN}–${MAX} (minimum ${MIN}, maximum ${MAX}).`,
   ].filter(Boolean).join('\n\n')
 
-  const text = await chatText({
+  const parsed = await chatJson({
     model: fastModel,
-    maxTokens: 96,
+    maxTokens: 160,
     temperature: 0.45,
-    system: `You are an OIA senior financial analyst interviewer.
-Reply with ONE English follow-up question only — no greeting, no praise, no preamble.
+    system: `You are an OIA senior financial analyst interviewer orchestrating an adaptive English interview.
+Reply with JSON only: { "action": "follow_up" | "closing", "text": "..." }
+
 Rules:
-- Must include at least one concrete noun or phrase taken verbatim from the latest answer (e.g. "${answerHook.slice(0, 40)}").
-- Max 22 words.
-- Probe deeper: metrics, stakeholders, trade-offs, or validation — vary by round.`,
+- action "follow_up": ONE English question, max 22 words, no greeting or praise. Must include a concrete noun/phrase verbatim from the latest answer (e.g. "${answerHook.slice(0, 40)}"). Probe metrics, stakeholders, trade-offs, or validation.
+- action "closing": ONLY if candidateRound >= ${MIN} AND you have sufficient evidence across portfolio analysis, risk, metrics, and stakeholders. text = brief professional closing (1–2 sentences, no question mark).
+- NEVER use "closing" before round ${MIN}.
+- If unsure, prefer "follow_up" until round ${MIN}.`,
     user,
   })
 
+  let action = parsed?.action === 'closing' ? 'closing' : 'follow_up'
+  let text = String(parsed?.text ?? '').trim()
+  if (!text) {
+    action = 'follow_up'
+    text = `You mentioned "${answerHook.slice(0, 48)}" — which metric confirmed your recommendation?`
+  }
+  if (candidateRound < MIN) action = 'follow_up'
+  if (action === 'closing' && text.includes('?')) {
+    action = 'follow_up'
+  }
+
   const evidencePhrase = answerHook.split(/\s+/).slice(0, 8).join(' ')
-  return { mode: 'model', text, evidencePhrase }
+  return { mode: 'model', text, evidencePhrase, action }
 }
 
 function normalizeMatchDimensions(rawDimensions) {

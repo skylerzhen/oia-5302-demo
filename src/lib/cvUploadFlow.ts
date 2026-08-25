@@ -1,9 +1,11 @@
 import type { CvParsePayload } from '../types'
 import { applyCvParsePayload, getCvParseProfile } from '../data/cvParseProfiles'
+import { previewKindFromFileName } from './cvSourceLocate'
 import { resolveCvSourceUrl } from './cvSourceUrl'
 import { localAi, type CvParseResult } from './localAi'
 
 export type CvUploadStage = 'idle' | 'reading' | 'uploading' | 'parsing' | 'mapping' | 'done' | 'error'
+export type CvPreviewKind = 'html' | 'pdf' | 'image'
 
 export interface CvUploadProgress {
   stage: CvUploadStage
@@ -27,6 +29,9 @@ export interface CvUploadResult extends CvParsePayload {
   mode: CvParseResult['mode']
   isScannedPdf: boolean
   sourceUrl: string
+  previewUrl: string
+  previewKind: CvPreviewKind
+  previewBlobUrl?: string
 }
 
 function wait(ms: number) {
@@ -170,6 +175,22 @@ export async function runCvUploadFlow(
 
     onProgress({ stage: 'done', progress: 100, message: 'Ready for review' })
 
+    const controlledSourceUrl = resolveCvSourceUrl(sampleId, input.fileName, input.filePath)
+    let previewUrl = controlledSourceUrl
+    let previewKind: CvPreviewKind = 'html'
+    let previewBlobUrl: string | undefined
+
+    if (input.file) {
+      previewKind = previewKindFromFileName(input.fileName, loaded.fileType)
+      if (previewKind === 'pdf' || previewKind === 'image') {
+        previewBlobUrl = URL.createObjectURL(input.file)
+        previewUrl = previewBlobUrl
+      } else {
+        previewUrl = controlledSourceUrl
+        previewKind = 'html'
+      }
+    }
+
     return {
       sampleId,
       fileName: input.fileName,
@@ -177,7 +198,10 @@ export async function runCvUploadFlow(
       fileType: loaded.fileType,
       mode: parsed.mode,
       isScannedPdf,
-      sourceUrl: resolveCvSourceUrl(sampleId, input.fileName, input.filePath),
+      sourceUrl: controlledSourceUrl,
+      previewUrl,
+      previewKind,
+      previewBlobUrl,
       ...payload,
     }
   } catch (error) {

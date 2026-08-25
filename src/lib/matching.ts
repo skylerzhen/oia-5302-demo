@@ -140,8 +140,14 @@ export function getMatchById(id: string): CandidateMatch | undefined {
   return rankCandidates().find((m) => m.candidateId === id)
 }
 
-/** Minimum candidate answers before the submit / closing step unlocks. */
-export const INTERVIEW_MIN_CANDIDATE_ANSWERS = 3
+/** Adaptive interview: minimum answers before LLM may close; hard maximum. */
+export const INTERVIEW_MIN_CANDIDATE_ANSWERS = 5
+export const INTERVIEW_MAX_CANDIDATE_ANSWERS = 10
+
+export const DEFAULT_INTERVIEW_CLOSING =
+  'Thank you for your thoughtful responses. That concludes our interview today — HR will review your recording with the hiring team.'
+
+export type InterviewFollowUpAction = 'follow_up' | 'closing'
 
 export function buildInterviewFollowUp(answer: string, round = 0): string {
   const hook = answer.trim().replace(/\s+/g, ' ')
@@ -151,8 +157,24 @@ export function buildInterviewFollowUp(answer: string, round = 0): string {
     `On "${snippet}", which KPIs or thresholds did you use before recommending action?`,
     `Who were the key stakeholders for "${snippet.slice(0, 48)}", and what was the outcome?`,
     `If conditions worsened after "${snippet.slice(0, 42)}", what would you change in your approach?`,
+    `Building on "${snippet.slice(0, 40)}", how did you validate the assumptions behind your recommendation?`,
+    `When you referenced "${snippet.slice(0, 36)}", what trade-offs did you present to leadership?`,
+    `How would you measure success six months after "${snippet.slice(0, 32)}"?`,
+    `What data would you need if "${snippet.slice(0, 28)}" had to be revisited under tighter limits?`,
   ]
   return templates[Math.min(round, templates.length - 1)]
+}
+
+export function countCandidateAnswers(turns: { speaker: string }[]) {
+  return turns.filter((t) => t.speaker === 'candidate').length
+}
+
+export function shouldForceInterviewClosing(candidateAnswers: number) {
+  return candidateAnswers >= INTERVIEW_MAX_CANDIDATE_ANSWERS
+}
+
+export function canLlmEndInterview(candidateAnswers: number) {
+  return candidateAnswers >= INTERVIEW_MIN_CANDIDATE_ANSWERS
 }
 
 export type InterviewUiPhase =
@@ -163,32 +185,24 @@ export type InterviewUiPhase =
 export function getInterviewUiPhase(
   turns: { speaker: string; language: string }[],
   completed: boolean,
+  closingReady = false,
 ): InterviewUiPhase {
-  if (completed) return 'ready_to_finish'
+  if (completed || closingReady) return 'ready_to_finish'
   if (turns.length === 0) return 'idle'
 
   const candidateTurns = turns.filter((t) => t.speaker === 'candidate')
-  const avatarTurns = turns.filter((t) => t.speaker === 'avatar')
-
   if (candidateTurns.length === 0) return 'english_answer'
-
-  const minAnswers = INTERVIEW_MIN_CANDIDATE_ANSWERS
-  if (
-    candidateTurns.length >= minAnswers &&
-    avatarTurns.length >= candidateTurns.length + 1
-  ) {
-    return 'ready_to_finish'
-  }
 
   return 'english_answer'
 }
 
 export function interviewAnswerProgress(turns: { speaker: string }[]) {
-  const answered = turns.filter((t) => t.speaker === 'candidate').length
+  const answered = countCandidateAnswers(turns)
   return {
     answered,
-    required: INTERVIEW_MIN_CANDIDATE_ANSWERS,
-    currentRound: Math.min(answered + 1, INTERVIEW_MIN_CANDIDATE_ANSWERS),
+    minRequired: INTERVIEW_MIN_CANDIDATE_ANSWERS,
+    maxAllowed: INTERVIEW_MAX_CANDIDATE_ANSWERS,
+    currentRound: answered + 1,
   }
 }
 

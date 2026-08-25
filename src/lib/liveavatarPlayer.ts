@@ -1,6 +1,7 @@
 import { Room, RoomEvent, Track } from 'livekit-client'
 import { localAi } from './localAi'
 import { withApiAuthBody } from './apiAuth'
+import { avatarLipSyncBus } from './avatarLipSyncBus'
 
 export interface LiveAvatarCredentials {
   sessionId: string
@@ -17,6 +18,10 @@ let room: Room | null = null
 let connectPromise: Promise<boolean> | null = null
 let lastError: string | null = null
 let lifecycleInstalled = false
+/** Prevents overlapping LiveAvatar speak API calls (root cause of double opening). */
+let speakInFlight = false
+
+const LIVEAVATAR_SPEAK_TIMEOUT_MS = 92_000
 
 export function getLiveAvatarLastError() {
   return lastError
@@ -292,37 +297,91 @@ export function liveAvatarVideoReady() {
   return Boolean(videoEl && videoEl.videoWidth > 0)
 }
 
+function liveAvatarMediaPlaying(
+  audio: HTMLAudioElement | null,
+  video: HTMLVideoElement | null,
+) {
+  const audioPlaying = Boolean(audio && !audio.paused && !audio.ended && audio.currentTime > 0)
+  const videoPlaying = Boolean(video && !video.paused && !video.ended && video.currentTime > 0)
+  return audioPlaying || videoPlaying
+}
+
 /** Wait until LiveKit-synced LiveAvatar audio finishes (lip-sync stays on video track). */
 export async function waitForLiveAvatarPlayback(timeoutMs = 120_000, signal?: AbortSignal) {
   const audio = ensureAudioElement()
   const video = videoEl
   if (!audio && !video) return
 
-  const startedAt = Date.now()
+  const deadline = Date.now() + timeoutMs
+  const startDeadline = Date.now() + 10_000
 
-  while (Date.now() - startedAt < timeoutMs) {
+  while (Date.now() < startDeadline) {
+    if (signal?.aborted) {
+      throw new DOMException('Speech interrupted', 'AbortError')
+    }
+    if (liveAvatarMediaPlaying(audio, video)) break
+    await sleep(100)
+  }
+
+  while (Date.now() < deadline) {
     if (signal?.aborted) {
       throw new DOMException('Speech interrupted', 'AbortError')
     }
 
-    const audioPlaying = Boolean(audio && !audio.paused && !audio.ended && audio.currentTime > 0)
-    const videoPlaying = Boolean(video && !video.paused && !video.ended && video.currentTime > 0)
-
-    if (!audioPlaying && !videoPlaying) {
-      if ((audio?.currentTime ?? 0) > 0 || (video?.currentTime ?? 0) > 0) {
-        return
-      }
-      await sleep(120)
-      if (!audio?.paused && audio?.currentTime === 0) {
-        await sleep(180)
-      }
-      const stillPlaying = Boolean(
-        (audio && !audio.paused && audio.currentTime > 0) ||
-        (video && !video.paused && video.currentTime > 0),
-      )
-      if (!stillPlaying) return
+    if (!liveAvatarMediaPlaying(audio, video)) {
+      await sleep(250)
+      if (!liveAvatarMediaPlaying(audio, video)) return
     }
 
     await sleep(120)
+  }
+}
+
+function waitForAbort(ms: number, signal?: AbortSignal) {
+  return new Promise<null>((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException('Speech interrupted', 'AbortError'))
+      return
+    }
+    const timer = window.setTimeout(() => resolve(null), ms)
+    signal?.addEventListener('abort', () => {
+      window.clearTimeout(timer)
+      reject(new DOMException('Speech interrupted', 'AbortError'))
+    }, { once: true })
+  })
+}
+
+/**
+ * Send one speak command to LiveAvatar and wait for playback — never call twice for the same line.
+ */
+export async function speakLiveAvatarOnce(text: string, signal?: AbortSignal): Promise<boolean> {
+  if (speakInFlight) return false
+  speakInFlight = true
+
+  try {
+    primeLiveAvatarAudioPlayback()
+    const ready = await prepareLiveAvatarForSpeech(20_000)
+    if (!ready) return false
+
+    const sessionId = getLiveAvatarSessionId()
+    if (!sessionId) return false
+
+    avatarLipSyncBus.set({ speaking: true, viseme: 'rest', jawOpen: 0 })
+
+    const result = await Promise.race([
+      localAi.liveavatarSpeak({ sessionId, text }),
+      waitForAbort(LIVEAVATAR_SPEAK_TIMEOUT_MS, signal),
+    ])
+    if (!result?.ok) return false
+
+    // Server already waits for agent.speak_ended over WebSocket — do not poll the
+    // LiveKit video element (idle stream always looks "playing").
+    return true
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') throw error
+    return false
+  } finally {
+    avatarLipSyncBus.set({ viseme: 'rest', jawOpen: 0, speaking: false })
+    speakInFlight = false
   }
 }

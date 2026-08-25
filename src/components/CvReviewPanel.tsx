@@ -1,13 +1,15 @@
 import type { ReactNode } from 'react'
-import { Crosshair, RefreshCw } from 'lucide-react'
+import { RefreshCw } from 'lucide-react'
 import type { ProfileField, ProfileTagGroup, WorkExperienceEntry } from '../types'
 import { countCvScalarFields } from '../lib/cvCompleteness'
 import { CompletenessPill } from './CompletenessPill'
 import { CvProfilePanel } from './CvProfilePanel'
+import { CvSourcePreview, type CvEvidenceLocateRequest, type CvPreviewKind } from './CvSourcePreview'
 
 interface CvReviewPanelProps {
   fileName: string
-  sourceUrl: string
+  previewUrl: string
+  previewKind?: CvPreviewKind
   fields: ProfileField[]
   skills: ProfileTagGroup
   languages: ProfileTagGroup
@@ -16,18 +18,19 @@ interface CvReviewPanelProps {
   parseMode?: string
   readOnly?: boolean
   reparseBusy?: boolean
+  locateRequest?: CvEvidenceLocateRequest | null
   onFieldChange?: (key: string, value: string) => void
   onSkillsChange?: (items: string[]) => void
   onLanguagesChange?: (items: string[]) => void
   onEvidence?: (title: string, evidence: string, source?: string) => void
   onReparse?: () => void
-  onLocateField?: (field: ProfileField) => void
   footer?: ReactNode
 }
 
 export function CvReviewPanel({
   fileName,
-  sourceUrl,
+  previewUrl,
+  previewKind = 'html',
   fields,
   skills,
   languages,
@@ -36,17 +39,22 @@ export function CvReviewPanel({
   parseMode,
   readOnly,
   reparseBusy,
+  locateRequest,
   onFieldChange,
   onSkillsChange,
   onLanguagesChange,
   onEvidence,
   onReparse,
-  onLocateField,
   footer,
 }: CvReviewPanelProps) {
   const completeness = countCvScalarFields(fields)
   const reviewCount = fields.filter((field) => field.status === 'review').length
   const missingCount = fields.filter((field) => field.status === 'missing').length
+  const previewLabel = previewKind === 'pdf'
+    ? 'PDF preview'
+    : previewKind === 'image'
+      ? 'Image preview'
+      : 'HTML source view'
 
   return (
     <div className="cv-evidence-reviewer" data-screen-ready="true">
@@ -54,8 +62,14 @@ export function CvReviewPanel({
         <div className="cv-evidence-source-head">
           <strong>Source document</strong>
           <span className="muted tiny">{fileName}</span>
+          <span className="cv-preview-kind-pill">{previewLabel}</span>
         </div>
-        <iframe title={`CV source: ${fileName}`} src={sourceUrl} className="cv-evidence-frame" />
+        <CvSourcePreview
+          url={previewUrl}
+          kind={previewKind}
+          fileName={fileName}
+          locateRequest={locateRequest}
+        />
       </aside>
 
       <div className="cv-evidence-main">
@@ -63,7 +77,7 @@ export function CvReviewPanel({
           <div>
             <h3>Extracted profile</h3>
             <p className="muted tiny">
-              Review AI-extracted fields against the source CV. Edit values before confirming.
+              Review AI-extracted fields against the source CV. Click <strong>Locate in CV</strong> to highlight the source span.
             </p>
           </div>
           <div className="cv-evidence-meta">
@@ -101,26 +115,12 @@ export function CvReviewPanel({
             onFieldChange={onFieldChange}
             onSkillsChange={onSkillsChange}
             onLanguagesChange={onLanguagesChange}
-            onEvidence={(title, evidence, source) => {
-              onEvidence?.(title, evidence, source)
-              const field = fields.find((entry) => entry.label === title || entry.key === title)
-              if (field) onLocateField?.(field)
-            }}
+            onEvidence={(title, evidence, source) => onEvidence?.(title, evidence, source)}
           />
         </div>
 
         {footer && <footer className="cv-evidence-decision-bar">{footer}</footer>}
       </div>
     </div>
-  )
-}
-
-export function CvFieldLocateHint({ source }: { source?: string }) {
-  if (!source) return null
-  return (
-    <span className="cv-locate-hint">
-      <Crosshair size={12} aria-hidden />
-      {source}
-    </span>
   )
 }

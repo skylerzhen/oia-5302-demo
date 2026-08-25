@@ -15,6 +15,14 @@ import { PRIMARY_CANDIDATE_ID } from '../data/candidates'
 import { FINANCE_JOB } from '../data/job'
 import { HR_STEPS } from '../lib/demo'
 import { localAi, type AssessmentResult } from '../lib/localAi'
+import {
+  computeCvScoreFromDimensions,
+  computeInterviewScoreFromDimensions,
+  computeOverallScore,
+  loadPillarWeights,
+  savePillarWeights,
+  type PillarWeights,
+} from '../lib/hrScoring'
 import { rankCandidates, type CandidateMatchWithTips } from '../lib/matching'
 import { loadLlmMatches } from '../lib/llmMatching'
 import { buildAssessmentKey, cachedLlmAssessment } from '../lib/llmRequestCache'
@@ -45,6 +53,7 @@ export function HrPortal() {
   const [matches, setMatches] = useState<CandidateMatchWithTips[]>(() => rankCandidates())
   const [matchLoading, setMatchLoading] = useState(false)
   const [journeyCandidate, setJourneyCandidate] = useState<string | null>(null)
+  const [pillarWeights, setPillarWeights] = useState<PillarWeights>(() => loadPillarWeights())
 
   const matchesMemo = matches
   const filtered = matchesMemo.filter((m) => {
@@ -55,6 +64,38 @@ export function HrPortal() {
   })
 
   const selected = matchesMemo.find((m) => m.candidateId === selectedId) ?? matchesMemo[0]
+  const cvScore = useMemo(
+    () => computeCvScoreFromDimensions(selected.dimensions),
+    [selected.dimensions],
+  )
+  const interviewPillarScore = useMemo(
+    () =>
+      interviewReport
+        ? computeInterviewScoreFromDimensions(interviewReport.dimensions)
+        : null,
+    [interviewReport],
+  )
+  const overallWeightedScore = useMemo(
+    () =>
+      computeOverallScore(
+        cvScore,
+        assessmentScore,
+        interviewPillarScore,
+        pillarWeights,
+      ),
+    [cvScore, assessmentScore, interviewPillarScore, pillarWeights],
+  )
+
+  function handlePillarWeightsChange(next: PillarWeights) {
+    setPillarWeights(next)
+    savePillarWeights(next)
+    log(
+      'Recruiter',
+      'Scoring weights adjusted',
+      `CV ${next.cvMatch} · Assessment ${next.assessment} · Interview ${next.interview}`,
+      'H4',
+    )
+  }
   const readyForInterviewReview = pipeline.interviewCompleted || interviewTurns.length > 0
   const fieldsKey = useMemo(() => profileFieldsKey(fields), [fields])
   const assessmentKey = useMemo(
@@ -311,13 +352,18 @@ export function HrPortal() {
             match={selected}
             assessmentScore={assessmentScore}
             interviewReport={interviewReport}
+            weights={pillarWeights}
+            onWeightsChange={handlePillarWeightsChange}
           />
 
           <div className="card stack">
             <div className="ai-rec-card">
             <span className="ai-label">AI recommendation</span>
             <strong>{interviewReport?.recommendation ?? (assessmentLoading ? 'Generating LLM recommendation…' : 'Complete C4 interview to generate recommendation')}</strong>
-            <p>Based on {selected.totalScore}% match · {assessmentScore}% assessment · evidence-linked interview review.</p>
+            <p>
+              Overall weighted score {overallWeightedScore}% — CV {cvScore}% · Assessment {assessmentScore}%
+              {interviewPillarScore != null && <> · Interview {interviewPillarScore}%</>} · evidence-linked review.
+            </p>
           </div>
 
           <div className="decision-toggle">

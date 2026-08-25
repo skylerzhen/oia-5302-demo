@@ -84,12 +84,18 @@ async function handleLocalAi(request, response, pathname) {
   if (pathname === '/api/local-ai/llm/follow-up') {
     const phrase = quotedPhrase(payload.answer)
     const isArabic = payload.language === 'ar'
+    const priorTurns = Array.isArray(payload.priorTurns) ? payload.priorTurns : []
+    const candidateRound = priorTurns.filter((turn) => turn?.speaker === 'candidate').length
+    const shouldClose = candidateRound >= 7
     return writeJson(response, 200, {
       mode: 'adapter-fallback',
       evidencePhrase: phrase,
-      text: isArabic
-        ? `ذكرتم "${phrase}". ما المؤشر الذي اعتمدتم عليه قبل تقديم توصيتكم؟`
-        : `You mentioned "${phrase}". Which metric or threshold did you use before making your recommendation?`,
+      action: shouldClose ? 'closing' : 'follow_up',
+      text: shouldClose
+        ? 'Thank you for your thoughtful responses. That concludes our interview today — HR will review your recording.'
+        : isArabic
+          ? `ذكرتم "${phrase}". ما المؤشر الذي اعتمدتم عليه قبل تقديم توصيتكم؟`
+          : `You mentioned "${phrase}". Which metric or threshold did you use before making your recommendation?`,
     })
   }
 

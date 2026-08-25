@@ -39,6 +39,7 @@ export interface FollowUpResult {
   mode: LocalAiMode
   text: string
   evidencePhrase: string
+  action: 'follow_up' | 'closing'
 }
 
 export interface QuestionResult {

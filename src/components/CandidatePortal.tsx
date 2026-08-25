@@ -6,6 +6,7 @@ import { VoiceAnswerInput } from './VoiceAnswerInput'
 import { EvidenceModal } from './EvidenceModal'
 import { SourceDocumentModal } from './SourceDocumentModal'
 import { CvReviewPanel } from './CvReviewPanel'
+import type { CvEvidenceLocateRequest, CvPreviewKind } from './CvSourcePreview'
 import { CvProfilePanel } from './CvProfilePanel'
 import { Layout } from './Layout'
 import { CV_UPLOAD_SAMPLES, CV_V2_DIFF } from '../data/candidates'
@@ -13,26 +14,44 @@ import { resolveSampleProfileId } from '../data/cvParseProfiles'
 import { FINANCE_JOB } from '../data/job'
 import { MCQ_QUESTIONS, INTERVIEW_PRESET } from '../data/questions'
 import { CANDIDATE_STEPS } from '../lib/demo'
-import { localAi, type FollowUpResult, type TtsResult } from '../lib/localAi'
-import { preloadSpeechVoices, setHeyGenAvatarEnabled, setLiveAvatarEnabled, speakInterviewLine, warmInterviewSpeech } from '../lib/voiceSpeak'
-import { installLiveAvatarLifecycleGuards, primeLiveAvatarAudioPlayback, stopLiveAvatarSession } from '../lib/liveavatarPlayer'
+import { localAi, type FollowUpResult } from '../lib/localAi'
+import { preloadSpeechVoices, setHeyGenAvatarEnabled, setLiveAvatarEnabled, warmInterviewSpeech } from '../lib/voiceSpeak'
+import { installLiveAvatarLifecycleGuards, stopLiveAvatarSession } from '../lib/liveavatarPlayer'
 import { unlockAudioPlayback } from '../lib/audioUnlock'
-import { avatarLipSyncBus } from '../lib/avatarLipSyncBus'
+import { useInterviewAvatar } from '../hooks/useInterviewAvatar'
 import { controlledViewUrl } from '../lib/controlledDocUrl'
 import { runCvUploadFlow, type CvUploadProgress, type CvUploadResult } from '../lib/cvUploadFlow'
 import { resolveCvSourceUrl } from '../lib/cvSourceUrl'
 import {
   buildImprovementTips,
   buildInterviewFollowUp,
+  countCandidateAnswers,
+  DEFAULT_INTERVIEW_CLOSING,
   getInterviewUiPhase,
   interviewAnswerProgress,
-  type InterviewUiPhase,
+  shouldForceInterviewClosing,
 } from '../lib/matching'
 import { getPrimaryMatch, loadLlmMatches } from '../lib/llmMatching'
 import { profileFieldsKey } from '../lib/profileFieldsKey'
 import type { CandidateMatchWithTips } from '../lib/matching'
-import { scrollElementIntoContent, scrollPageToTop } from '../lib/scrollPageToTop'
-import type { CandidateStepId, FieldStatus, InterviewTurn, ProfileTagGroup, Viseme, WorkExperienceEntry } from '../types'
+import { scrollPageToTop } from '../lib/scrollPageToTop'
+import { scrollToC1RevealAnchor, pulseRevealElement } from '../lib/smoothScroll'
+import type { CandidateStepId, FieldStatus, InterviewTurn, ProfileTagGroup, WorkExperienceEntry } from '../types'
+
+const UPLOAD_STAGE_TRACK = [
+  { id: 'reading', label: 'Read' },
+  { id: 'uploading', label: 'Upload' },
+  { id: 'parsing', label: 'Extract' },
+  { id: 'mapping', label: 'Map' },
+  { id: 'done', label: 'Review' },
+] as const
+
+type C1ReviewAnim = 'hidden' | 'entering' | 'visible'
+
+function uploadStageIndex(stage: CvUploadProgress['stage']) {
+  if (stage === 'idle' || stage === 'error') return -1
+  return UPLOAD_STAGE_TRACK.findIndex((entry) => entry.id === stage)
+}
 
 function hasCvUploadEvidence(
   fields: { evidence?: string; source?: string; status: FieldStatus }[],
@@ -82,15 +101,12 @@ export function CandidatePortal() {
   const [examStartedAt, setExamStartedAt] = useState<number | null>(null)
   const [examDurationSec, setExamDurationSec] = useState(0)
   const [interviewStarted, setInterviewStarted] = useState(() => interviewTurns.length > 0)
+  const [interviewClosingReady, setInterviewClosingReady] = useState(false)
   const [candidateAnswerEn, setCandidateAnswerEn] = useState('')
-  const [avatarSpeaking, setAvatarSpeaking] = useState(false)
-  const [avatarCaption, setAvatarCaption] = useState('')
-  const [avatarExpression, setAvatarExpression] = useState<'neutral' | 'supportive' | 'curious' | 'gesture'>('neutral')
   const [supportivePrompt, setSupportivePrompt] = useState('')
-  const [avatarViseme, setAvatarViseme] = useState<Viseme>('rest')
   const [speechStatus, setSpeechStatus] = useState({ asr: 'browser' })
   const [avatarMode, setAvatarMode] = useState<'2d' | 'heygen' | 'liveavatar'>('2d')
-  const [llmBusy, setLlmBusy] = useState(false)
+  const avatar = useInterviewAvatar(avatarMode)
   const [llmError, setLlmError] = useState('')
   const [matchLoading, setMatchLoading] = useState(false)
   const [llmMatch, setLlmMatch] = useState<CandidateMatchWithTips | null>(null)
@@ -100,6 +116,16 @@ export function CandidatePortal() {
   const [uploadExpanded, setUploadExpanded] = useState(false)
   const [parsePreview, setParsePreview] = useState<CvUploadResult | null>(null)
   const [appliedSourceUrl, setAppliedSourceUrl] = useState('')
+  const [appliedPreviewUrl, setAppliedPreviewUrl] = useState('')
+  const [appliedPreviewKind, setAppliedPreviewKind] = useState<CvPreviewKind>('html')
+  const [evidenceLocate, setEvidenceLocate] = useState<CvEvidenceLocateRequest | null>(null)
+  const [c1UploadExiting, setC1UploadExiting] = useState(false)
+  const [c1ReviewAnim, setC1ReviewAnim] = useState<C1ReviewAnim>(() => (
+    fields.some((field) => field.value.trim()) ? 'visible' : 'hidden'
+  ))
+  const [submissionReveal, setSubmissionReveal] = useState(false)
+  const previewBlobRef = useRef<string | null>(null)
+  const parsePreviewKeyRef = useRef<string | null>(null)
   const [lastUploadInput, setLastUploadInput] = useState<{
     sampleId: string
     label: string
@@ -113,29 +139,40 @@ export function CandidatePortal() {
   const [uploadProgress, setUploadProgress] = useState<CvUploadProgress>({ stage: 'idle', progress: 0, message: '' })
   const [evidenceModal, setEvidenceModal] = useState<{ title: string; evidence: string; source?: string } | null>(null)
   const [sourceDoc, setSourceDoc] = useState<{ title: string; url: string } | null>(null)
-  const stopAvatarRef = useRef<(() => void) | null>(null)
-  const speechAbortRef = useRef<AbortController | null>(null)
   const confirmFieldsRef = useRef<HTMLDivElement | null>(null)
   const submissionReviewRef = useRef<HTMLElement | null>(null)
+  const submissionActionsRef = useRef<HTMLDivElement | null>(null)
   const c3SectionRef = useRef<HTMLElement | null>(null)
   const stepTopRef = useRef<HTMLDivElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
-  function scrollToElement(element: HTMLElement | null) {
-    scrollElementIntoContent(element)
+  function revokePreviewBlob() {
+    if (previewBlobRef.current) {
+      URL.revokeObjectURL(previewBlobRef.current)
+      previewBlobRef.current = null
+    }
   }
+
+  function adoptPreviewBlob(url?: string) {
+    revokePreviewBlob()
+    if (url?.startsWith('blob:')) previewBlobRef.current = url
+  }
+
+  function scrollC1ToBottom(anchor?: HTMLElement | null) {
+    return scrollToC1RevealAnchor(anchor ?? submissionActionsRef.current)
+  }
+
+  useEffect(() => () => revokePreviewBlob(), [])
 
   function stopInterviewSpeech() {
-    speechAbortRef.current?.abort()
-    speechAbortRef.current = null
-    stopAvatarRef.current = null
-    if ('speechSynthesis' in window) window.speechSynthesis.cancel()
-    avatarLipSyncBus.reset()
-    setAvatarSpeaking(false)
-    setAvatarViseme('rest')
+    avatar.stop()
   }
 
-  const interviewPhase = getInterviewUiPhase(interviewTurns, pipeline.interviewCompleted)
+  function appendAvatarTurn(turn: InterviewTurn, add: boolean) {
+    if (add) setInterviewTurns((prev) => [...prev, turn])
+  }
+
+  const interviewPhase = getInterviewUiPhase(interviewTurns, pipeline.interviewCompleted, interviewClosingReady)
   const interviewProgress = interviewAnswerProgress(interviewTurns)
   const match = llmMatch
   const fieldsKey = useMemo(() => profileFieldsKey(fields), [fields])
@@ -245,9 +282,79 @@ export function CandidatePortal() {
   }, [])
 
   useEffect(() => {
-    if (!reviewReady) return
-    scrollToElement(submissionReviewRef.current)
+    if (!reviewReady) {
+      setSubmissionReveal(false)
+      return
+    }
+
+    setSubmissionReveal(true)
+
+    let cancelled = false
+    let cancelScroll: (() => void) | undefined
+    let attempts = 0
+
+    const startScroll = () => {
+      if (cancelled) return
+      const anchor = submissionActionsRef.current
+      if (anchor || attempts >= 24) {
+        cancelScroll = scrollC1ToBottom(anchor)
+        window.setTimeout(() => {
+          pulseRevealElement(submissionReviewRef.current, 'submission-review--revealed')
+        }, 700)
+        return
+      }
+      attempts += 1
+      requestAnimationFrame(startScroll)
+    }
+
+    startScroll()
+    return () => {
+      cancelled = true
+      cancelScroll?.()
+    }
   }, [reviewReady])
+
+  useEffect(() => {
+    if (!parsePreview) {
+      if (profileFromCv) setC1ReviewAnim('visible')
+      return
+    }
+
+    const revealKey = `${parsePreview.sampleId}:${parsePreview.fileName}`
+    if (parsePreviewKeyRef.current === revealKey) return
+    parsePreviewKeyRef.current = revealKey
+
+    const firstReveal = !profileFromCv
+    if (firstReveal) {
+      setC1UploadExiting(true)
+      setC1ReviewAnim('entering')
+      const exitTimer = window.setTimeout(() => setC1UploadExiting(false), 540)
+      const enterTimer = window.setTimeout(() => {
+        setC1ReviewAnim('visible')
+        scrollC1ToBottom(confirmFieldsRef.current)
+      }, 300)
+      return () => {
+        window.clearTimeout(exitTimer)
+        window.clearTimeout(enterTimer)
+      }
+    }
+
+    setC1ReviewAnim('entering')
+    const timer = window.setTimeout(() => {
+      setC1ReviewAnim('visible')
+      scrollC1ToBottom(confirmFieldsRef.current)
+    }, 100)
+    return () => window.clearTimeout(timer)
+  }, [parsePreview, profileFromCv])
+
+  useEffect(() => {
+    if (step !== 'C1') {
+      setC1UploadExiting(false)
+      setC1ReviewAnim('hidden')
+      setSubmissionReveal(false)
+      parsePreviewKeyRef.current = null
+    }
+  }, [step])
 
   async function processCvUpload(input: {
     sampleId: string
@@ -280,9 +387,15 @@ export function CandidatePortal() {
         },
         setUploadProgress,
       )
+      if (!profileFromCv) {
+        setC1UploadExiting(true)
+        setC1ReviewAnim('entering')
+      } else {
+        setC1ReviewAnim('entering')
+      }
       setParsePreview(result)
+      adoptPreviewBlob(result.previewBlobUrl)
       log('System', 'LLM CV parsing invoked', `${result.fileName}; ${result.fileSize} bytes; mode: ${result.mode}`, 'C1')
-      window.setTimeout(() => scrollToElement(confirmFieldsRef.current), 0)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Upload failed'
       setUploadError(message)
@@ -320,6 +433,10 @@ export function CandidatePortal() {
     setProfileFromCv(true)
     setAppliedCvFileName(parsePreview.fileName)
     setAppliedSourceUrl(parsePreview.sourceUrl)
+    setAppliedPreviewUrl(parsePreview.previewUrl)
+    setAppliedPreviewKind(parsePreview.previewKind)
+    adoptPreviewBlob(parsePreview.previewBlobUrl)
+    setEvidenceLocate(null)
     setUploadExpanded(false)
     setUploadedSamples((current) => (
       current.includes(parsePreview.sampleId) ? current : [...current, parsePreview.sampleId]
@@ -331,12 +448,18 @@ export function CandidatePortal() {
       'C1',
     )
     setParsePreview(null)
-    window.setTimeout(() => scrollToElement(confirmFieldsRef.current), 0)
+    parsePreviewKeyRef.current = null
   }
 
   function cancelParsePreview() {
-    setParsePreview(null)
-    setUploadProgress({ stage: 'idle', progress: 0, message: '' })
+    setC1ReviewAnim('hidden')
+    window.setTimeout(() => {
+      setParsePreview(null)
+      parsePreviewKeyRef.current = null
+      revokePreviewBlob()
+      setEvidenceLocate(null)
+      setUploadProgress({ stage: 'idle', progress: 0, message: '' })
+    }, 340)
   }
 
   function updateParsePreviewScalar(key: string, value: string) {
@@ -406,11 +529,16 @@ export function CandidatePortal() {
       })
       log(
         'System',
-        result.mode === 'model' ? 'LLM follow-up generated' : 'Follow-up template',
-        `${result.mode}; grounded on: ${result.evidencePhrase ?? answer.slice(0, 40)}`,
+        result.mode === 'model'
+          ? result.action === 'closing' ? 'LLM interview closing' : 'LLM follow-up generated'
+          : 'Follow-up template',
+        `${result.mode}; action=${result.action ?? 'follow_up'}; grounded on: ${result.evidencePhrase ?? answer.slice(0, 40)}`,
         'C4',
       )
-      return result
+      return {
+        ...result,
+        action: result.action ?? 'follow_up',
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'timeout'
       const fallback = buildInterviewFollowUp(answer, Math.max(0, candidateTurnCount - 1))
@@ -420,45 +548,72 @@ export function CandidatePortal() {
         mode: 'adapter-fallback',
         text: fallback,
         evidencePhrase: answer.trim().split(/\s+/).slice(0, 8).join(' '),
+        action: 'follow_up',
       }
     }
   }
 
-  async function speakAvatar(turn: InterviewTurn, options?: { addTurn?: boolean; prefetchedTts?: TtsResult | null }) {
-    if (options?.addTurn !== false) {
-      setInterviewTurns((prev) => [...prev, turn])
+  async function deliverInterviewClosing(closingText = DEFAULT_INTERVIEW_CLOSING) {
+    const turn: InterviewTurn = {
+      id: nextTurnId('close'),
+      speaker: 'avatar',
+      language: 'en',
+      text: closingText,
+      expression: 'supportive',
     }
-    setAvatarCaption(turn.text)
-    setAvatarExpression(turn.expression ?? 'neutral')
-    setAvatarSpeaking(true)
-    setAvatarViseme('rest')
+    const mode = await avatar.speakTurn(turn, { onTranscriptTurn: appendAvatarTurn })
+    if (mode) {
+      log('System', 'Avatar TTS', `closing; mode: ${mode}`, 'C4')
+    }
+    setInterviewClosingReady(true)
+    log('System', 'Adaptive interview closing', `${countCandidateAnswers(interviewTurns)} answers · orchestrator end`, 'C4')
+  }
 
-    speechAbortRef.current?.abort()
-    const controller = new AbortController()
-    speechAbortRef.current = controller
-    stopAvatarRef.current = () => controller.abort()
+  async function handleCandidateAnswerSubmit(ans: string) {
+    unlockAudioPlayback()
+    setLlmError('')
 
     try {
-      const mode = await speakInterviewLine({
-        text: turn.text,
-        language: turn.language,
-        onViseme: setAvatarViseme,
-        signal: controller.signal,
-        prefetchedTts: options?.prefetchedTts,
+      await avatar.think(async () => {
+        const candidateTurn = {
+          id: nextTurnId('c-en'),
+          speaker: 'candidate' as const,
+          language: 'en' as const,
+          text: ans,
+        }
+        const updatedTurns = [...interviewTurns, candidateTurn]
+        setInterviewTurns(updatedTurns)
+        setCandidateAnswerEn('')
+        const answerCount = countCandidateAnswers(updatedTurns)
+
+        if (shouldForceInterviewClosing(answerCount)) {
+          await deliverInterviewClosing()
+          return
+        }
+
+        const followUp = await generateAvatarFollowUp(ans, updatedTurns)
+        if (followUp.mode === 'model') setLlmError('')
+
+        if (followUp.action === 'closing') {
+          await deliverInterviewClosing(followUp.text)
+          return
+        }
+
+        await deliverAvatarFollowUp(followUp)
       })
-      log('System', 'Avatar TTS', `${turn.language}; mode: ${mode}`, 'C4')
     } catch (error) {
-      if (error instanceof DOMException && error.name === 'AbortError') return
-      const message = error instanceof Error ? error.message : 'TTS failed'
-      log('System', 'Avatar TTS failed', message, 'C4')
-    } finally {
-      if (speechAbortRef.current === controller) {
-        speechAbortRef.current = null
-        stopAvatarRef.current = null
-      }
-      setAvatarSpeaking(false)
-      setAvatarViseme('rest')
+      const message = error instanceof Error ? error.message : 'LLM request failed'
+      setLlmError(message)
+      log('System', 'LLM request failed', message, 'C4')
     }
+  }
+
+  async function submitInterviewAndContinue() {
+    stopInterviewSpeech()
+    setPipeline({ interviewCompleted: true })
+    syncIntegration('jadarah.interviewRecord', 'C4', `${interviewTurns.length} turns recorded`)
+    log('Candidate', 'Interview completed', 'Recording saved for HR review', 'C4')
+    setStep('C5')
   }
 
   async function deliverAvatarFollowUp(followUp: FollowUpResult) {
@@ -473,26 +628,17 @@ export function CandidatePortal() {
         evidencePhrase: followUp.evidencePhrase,
       },
     }
-    const ttsPromise = avatarMode === 'liveavatar'
-      ? Promise.resolve(null)
-      : localAi.synthesize({ text: followUp.text })
     setInterviewTurns((prev) => [...prev, turn])
-    setAvatarCaption(followUp.text)
-    setAvatarExpression('curious')
-    await speakAvatar(turn, { addTurn: false, prefetchedTts: await ttsPromise })
-  }
-
-  async function runLlmInterviewAction(action: () => Promise<void>) {
-    setLlmError('')
-    setLlmBusy(true)
-    try {
-      await action()
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'LLM request failed'
-      setLlmError(message)
-      log('System', 'LLM request failed', message, 'C4')
-    } finally {
-      setLlmBusy(false)
+    const prefetchedTts = avatarMode === 'liveavatar'
+      ? null
+      : await localAi.synthesize({ text: followUp.text })
+    const mode = await avatar.speakTurn(turn, {
+      addToTranscript: false,
+      prefetchedTts,
+      onTranscriptTurn: appendAvatarTurn,
+    })
+    if (mode) {
+      log('System', 'Avatar TTS', `follow-up; mode: ${mode}`, 'C4')
     }
   }
 
@@ -555,19 +701,18 @@ export function CandidatePortal() {
   })
 
   function interruptAvatar() {
-    if (!avatarSpeaking) return
-    stopAvatarRef.current?.()
-    setAvatarCaption('I have paused. Please continue when you are ready.')
-    setAvatarExpression('supportive')
-    setAvatarViseme('rest')
+    if (!avatar.isSpeaking) return
+    avatar.stop()
+    avatar.setCaption('I have paused. Please continue when you are ready.')
+    avatar.setExpression('supportive')
     log('Candidate', 'Avatar interrupted', 'Candidate interrupted the avatar; interview safely paused', 'C4')
   }
 
   function requestSupportivePause() {
     setSupportivePrompt('Waiting for three seconds before the supportive response…')
     window.setTimeout(() => {
-      setAvatarCaption('Take your time. Please share the example when you are ready.')
-      setAvatarExpression('supportive')
+      avatar.setCaption('Take your time. Please share the example when you are ready.')
+      avatar.setExpression('supportive')
       setSupportivePrompt('Supportive pause displayed and recorded.')
       log('System', 'Supportive pause', 'Candidate pause of three seconds triggered supportive interview response', 'C4')
     }, 3000)
@@ -634,12 +779,12 @@ export function CandidatePortal() {
         >
           <FileUp size={profileFromCv ? 22 : 28} aria-hidden />
           <strong>{dragActive ? 'Drop to upload' : profileFromCv ? 'Drop or browse to replace CV' : 'Drag & drop your CV here'}</strong>
-          <span>PDF, DOC, DOCX</span>
+          <span>PDF, DOC, DOCX, PNG, JPG</span>
           <input
             ref={fileInputRef}
             type="file"
             hidden
-            accept=".pdf,.doc,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.webp,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*"
             disabled={uploadBusy}
             onChange={(event) => handleLocalCvUpload(event.target.files)}
           />
@@ -647,6 +792,19 @@ export function CandidatePortal() {
 
         {(uploadBusy || uploadProgress.stage === 'done' || uploadProgress.stage === 'error' || uploadError) && (
           <div className={`upload-progress ${uploadProgress.stage === 'idle' && uploadError ? 'error' : uploadProgress.stage}`}>
+            <ol className="upload-stage-track" aria-label="Upload progress">
+              {UPLOAD_STAGE_TRACK.map((stage, index) => {
+                const activeIndex = uploadStageIndex(uploadProgress.stage)
+                const done = activeIndex > index || uploadProgress.stage === 'done'
+                const active = activeIndex === index
+                return (
+                  <li key={stage.id} className={`upload-stage-step ${done ? 'done' : ''} ${active ? 'active' : ''}`}>
+                    <span className="upload-stage-dot" aria-hidden />
+                    <span>{stage.label}</span>
+                  </li>
+                )
+              })}
+            </ol>
             <div className="upload-progress-head">
               <strong>
                 {uploadProgress.stage === 'reading' && 'Reading document'}
@@ -699,6 +857,10 @@ export function CandidatePortal() {
     )
   }
 
+  const showInitialUpload = !parsePreview && !profileFromCv
+  const showUploadCard = showInitialUpload || c1UploadExiting
+  const c1InReviewMode = Boolean(parsePreview || profileFromCv)
+
   return (
     <>
       <Layout
@@ -713,34 +875,40 @@ export function CandidatePortal() {
       >
           <div ref={stepTopRef} className="step-scroll-anchor" aria-hidden="true" />
           {step === 'C1' && (
-            <section className="stack">
-              <header className="section-head">
+            <section className={`stack c1-flow ${c1InReviewMode ? 'c1-flow-review' : 'c1-flow-upload'}`}>
+              <header className={`section-head c1-section-head ${c1InReviewMode ? 'is-review' : 'is-upload'}`}>
                 <h1>C1 · Apply & confirm profile</h1>
-                <p>
-                  {parsePreview || profileFromCv
+                <p className="c1-section-subtitle">
+                  {c1InReviewMode
                     ? 'Review extracted fields against your CV, edit if needed, then confirm for Jadarah (simulated).'
                     : 'Upload your CV — AI extracts fields for human review, then submit to Jadarah (simulated).'}
                 </p>
               </header>
 
-              {!parsePreview && !profileFromCv && (
-                <div className="card c1-upload-card">
+              {showUploadCard && (
+                <div
+                  className={`card c1-upload-card ${uploadBusy ? 'is-busy' : ''} ${c1UploadExiting ? 'is-exiting' : 'is-entering'}`}
+                >
                   {renderCvUploadControls()}
                 </div>
               )}
 
-              {(parsePreview || profileFromCv) && (
+              {c1InReviewMode && (
                 <>
-                  {(showCompactUpload || uploadExpanded || uploadBusy) && (
-                    <div className="card c1-upload-card c1-upload-card-inline">
+                  {(showCompactUpload || uploadExpanded || uploadBusy) && !parsePreview && (
+                    <div className="card c1-upload-card c1-upload-card-inline is-entering">
                       {renderCvUploadControls()}
                     </div>
                   )}
 
-                  <div ref={confirmFieldsRef} className="card c1-review-card">
+                  <div
+                    ref={confirmFieldsRef}
+                    className={`card c1-review-card c1-review-card--${c1ReviewAnim}`}
+                  >
                     <CvReviewPanel
                       fileName={parsePreview?.fileName ?? appliedCvFileName}
-                      sourceUrl={parsePreview?.sourceUrl ?? (appliedSourceUrl || resolveCvSourceUrl('pdf-en', appliedCvFileName))}
+                      previewUrl={parsePreview?.previewUrl ?? (appliedPreviewUrl || appliedSourceUrl || resolveCvSourceUrl('pdf-en', appliedCvFileName))}
+                      previewKind={parsePreview?.previewKind ?? appliedPreviewKind}
                       fields={parsePreview?.fields ?? fields}
                       skills={parsePreview?.skills ?? profileSkills}
                       languages={parsePreview?.languages ?? profileLanguages}
@@ -749,10 +917,13 @@ export function CandidatePortal() {
                       parseMode={parsePreview?.mode}
                       readOnly={false}
                       reparseBusy={uploadBusy}
+                      locateRequest={evidenceLocate}
                       onFieldChange={parsePreview ? updateParsePreviewScalar : updateScalarField}
                       onSkillsChange={parsePreview ? updateParsePreviewSkills : (items) => updateTagGroup(setProfileSkills, items)}
                       onLanguagesChange={parsePreview ? updateParsePreviewLanguages : (items) => updateTagGroup(setProfileLanguages, items)}
-                      onEvidence={(title, evidence, source) => setEvidenceModal({ title, evidence, source })}
+                      onEvidence={(title, evidence, source) => {
+                        setEvidenceLocate({ title, evidence, source, token: Date.now() })
+                      }}
                       onReparse={lastUploadInput ? handleReparseCv : undefined}
                       footer={parsePreview ? (
                         <div className="cv-decision-actions">
@@ -784,7 +955,10 @@ export function CandidatePortal() {
               )}
 
               {reviewReady && profileFromCv && !parsePreview && (
-                <section ref={submissionReviewRef} className="card submission-review">
+                <section
+                  ref={submissionReviewRef}
+                  className={`card submission-review ${submissionReveal ? 'is-entering' : ''}`}
+                >
                   <header className="section-head">
                     <div>
                       <h2>Review & submit</h2>
@@ -798,7 +972,7 @@ export function CandidatePortal() {
                     workHistory={profileWorkHistory}
                     readOnly
                   />
-                  <div className="actions">
+                  <div ref={submissionActionsRef} className="actions">
                     <button type="button" onClick={() => setReviewReady(false)}>Back to edit</button>
                     <button type="button" className="primary" onClick={() => {
                       setPipeline({ profileSubmitted: true })
@@ -924,9 +1098,10 @@ export function CandidatePortal() {
                   <button type="button" className="primary" onClick={() => {
                     setInterviewTurns([])
                     setInterviewStarted(false)
+                    setInterviewClosingReady(false)
                     setCandidateAnswerEn('')
-                    setAvatarCaption('')
-                    setAvatarSpeaking(false)
+                    avatar.setCaption('')
+                    avatar.stop()
                     setPipeline({ assessmentSubmitted: true, interviewCompleted: false })
                     log('System', 'Interview segment ready', 'Candidate entered AI avatar interview (C4)', 'C4')
                     setStep('C4')
@@ -940,46 +1115,60 @@ export function CandidatePortal() {
             <section className="stack">
               <header className="section-head">
                 <h1>C4 · AI avatar interview</h1>
-                <p>Candidate-only session · HR reviews recording separately · English interview</p>
+                <p>Adaptive dialogue (5–10 questions) · LLM decides when sufficient evidence · HR reviews recording separately</p>
               </header>
               <div className="interview-steps card">
-                <span className={interviewPhase !== 'idle' ? 'done' : 'active'}>1. Interview Q&amp;A</span>
-                <span className={pipeline.interviewCompleted ? 'done' : interviewPhase === 'ready_to_finish' ? 'active' : ''}>2. Submit</span>
+                <span className={interviewClosingReady || pipeline.interviewCompleted ? 'done' : 'active'}>1. Adaptive Q&amp;A</span>
+                <span className={pipeline.interviewCompleted ? 'done' : interviewPhase === 'ready_to_finish' ? 'active' : ''}>2. Submit &amp; scoring</span>
               </div>
               <div className="grid-2">
                 <AvatarPanel
-                  speaking={avatarSpeaking}
-                  expression={avatarExpression}
-                  caption={avatarCaption || 'Start when ready'}
-                  viseme={avatarSpeaking ? avatarViseme : undefined}
+                  speaking={avatar.isSpeaking || avatar.uiPhase === 'speaking'}
+                  expression={avatar.expression}
+                  caption={avatar.caption || 'Start when ready'}
+                  viseme={avatar.isSpeaking ? avatar.viseme : undefined}
                   avatarMode={avatarMode}
                   liveAvatarSessionActive={interviewStarted && avatarMode === 'liveavatar'}
                 />
                 <div className="card stack">
-                  {llmBusy && (
+                  {(avatar.isConnecting || avatar.isThinking) && avatar.statusMessage && (
                     <div className="interview-loading" role="status" aria-live="polite">
                       <span className="interview-loading-spinner" aria-hidden="true" />
-                      <span>{interviewLoadingMessage(interviewStarted, interviewPhase, interviewTurns.length, avatarMode === 'liveavatar')}</span>
+                      <span>{avatar.statusMessage}</span>
                     </div>
                   )}
                   {!interviewStarted ? (
-                    <button type="button" className="primary" disabled={llmBusy} onClick={() => {
+                    <button type="button" className="primary" disabled={avatar.isBusy} onClick={() => {
                       unlockAudioPlayback()
-                      if (avatarMode === 'liveavatar') primeLiveAvatarAudioPlayback()
-                      void runLlmInterviewAction(async () => {
-                        const openingQuestion = INTERVIEW_PRESET[0].text
+                      setInterviewClosingReady(false)
+                      void (async () => {
+                        setLlmError('')
                         setInterviewStarted(true)
-                        await new Promise<void>((resolve) => {
-                          requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
-                        })
-                        await speakAvatar({
-                          id: nextTurnId('g'),
-                          speaker: 'avatar',
-                          language: 'en',
-                          text: openingQuestion,
-                          expression: 'neutral',
-                        })
-                      })
+                        try {
+                          const ready = await avatar.connectLiveAvatar()
+                          if (!ready) {
+                            setLlmError('LiveAvatar video is not ready yet. Please try again in a moment.')
+                            setInterviewStarted(false)
+                            return
+                          }
+                          const openingQuestion = INTERVIEW_PRESET[0].text
+                          const mode = await avatar.speakTurn({
+                            id: nextTurnId('g'),
+                            speaker: 'avatar',
+                            language: 'en',
+                            text: openingQuestion,
+                            expression: 'neutral',
+                          }, { onTranscriptTurn: appendAvatarTurn })
+                          if (mode) {
+                            log('System', 'Avatar TTS', `opening; mode: ${mode}`, 'C4')
+                          }
+                        } catch (error) {
+                          const message = error instanceof Error ? error.message : 'Interview start failed'
+                          setLlmError(message)
+                          log('System', 'Interview start failed', message, 'C4')
+                          setInterviewStarted(false)
+                        }
+                      })()
                     }}><Play size={16} /> Start interview</button>
                   ) : (
                     <>
@@ -1000,7 +1189,7 @@ export function CandidatePortal() {
                         ))}
                       </div>
                       {llmError && <p className="danger-text">{llmError}</p>}
-                      {avatarSpeaking && (
+                      {avatar.isSpeaking && (
                         <button type="button" className="danger" onClick={interruptAvatar}>
                           Interrupt avatar
                         </button>
@@ -1009,45 +1198,29 @@ export function CandidatePortal() {
                       {interviewPhase === 'english_answer' && (
                         <div className="stack">
                           <p className="muted tiny">
-                            Answer {interviewProgress.currentRound} of {interviewProgress.required}
-                            {interviewProgress.answered > 0 ? ' · AI will ask a contextual follow-up after each reply' : ''}
+                            Answer {interviewProgress.currentRound}
+                            {interviewProgress.answered < interviewProgress.minRequired
+                              ? ` · ${interviewProgress.minRequired}–${interviewProgress.maxAllowed} adaptive questions (minimum ${interviewProgress.minRequired} before wrap-up)`
+                              : ` · up to ${interviewProgress.maxAllowed} · AI may close when evidence is sufficient`}
+                            {interviewProgress.answered > 0 ? ' · contextual follow-up after each reply' : ''}
                             {' · '}via microphone or typing.
                           </p>
                           <VoiceAnswerInput
                             key="c4-english-answer"
                             value={candidateAnswerEn}
                             onChange={setCandidateAnswerEn}
-                            disabled={avatarSpeaking || llmBusy}
+                            disabled={avatar.isBusy}
                             placeholder="Your answer..."
-                            submitLabel={llmBusy ? 'Generating follow-up…' : 'Send answer'}
-                            submitDisabled={llmBusy}
+                            submitLabel={avatar.isThinking ? 'Generating follow-up…' : 'Send answer'}
+                            submitDisabled={avatar.isBusy}
                             asrProvider={speechStatus.asr}
                             onSubmit={() => {
-                              unlockAudioPlayback()
-                              if (avatarMode === 'liveavatar') primeLiveAvatarAudioPlayback()
                               const ans = candidateAnswerEn.trim()
-                              void (async () => {
-                                setLlmError('')
-                                setLlmBusy(true)
-                                try {
-                                  const candidateTurn = { id: nextTurnId('c-en'), speaker: 'candidate' as const, language: 'en' as const, text: ans }
-                                  const updatedTurns = [...interviewTurns, candidateTurn]
-                                  setInterviewTurns(updatedTurns)
-                                  setCandidateAnswerEn('')
-                                  const followUp = await generateAvatarFollowUp(ans, updatedTurns)
-                                  setLlmBusy(false)
-                                  if (followUp.mode === 'model') setLlmError('')
-                                  await deliverAvatarFollowUp(followUp)
-                                } catch (error) {
-                                  const message = error instanceof Error ? error.message : 'LLM request failed'
-                                  setLlmError(message)
-                                  log('System', 'LLM request failed', message, 'C4')
-                                  setLlmBusy(false)
-                                }
-                              })()
+                              if (!ans) return
+                              void handleCandidateAnswerSubmit(ans)
                             }}
                           />
-                          <button type="button" onClick={requestSupportivePause} disabled={avatarSpeaking}>
+                          <button type="button" onClick={requestSupportivePause} disabled={avatar.isSpeaking}>
                             I need a moment (3-second supportive response)
                           </button>
                           {supportivePrompt && <p className="muted tiny">{supportivePrompt}</p>}
@@ -1065,14 +1238,10 @@ export function CandidatePortal() {
                             </p>
                             <p className="muted tiny">Multilingual subtitles · display only (demo)</p>
                           </div>
-                          <p className="ok-text">Interview recorded. Submit to unlock C5 and sync with HR review.</p>
-                          <button type="button" className="primary" onClick={() => {
-                            stopInterviewSpeech()
-                            setPipeline({ interviewCompleted: true })
-                            syncIntegration('jadarah.interviewRecord', 'C4', `${interviewTurns.length} turns recorded`)
-                            log('Candidate', 'Interview completed', 'Recording saved for HR review', 'C4')
-                            setStep('C5')
-                          }}>Submit interview &amp; continue →</button>
+                          <p className="ok-text">Interview complete — review the closing message above, then submit to view your match score.</p>
+                          <button type="button" className="primary" onClick={() => void submitInterviewAndContinue()}>
+                            Submit interview &amp; view my score →
+                          </button>
                         </div>
                       )}
                     </>
@@ -1129,16 +1298,4 @@ export function CandidatePortal() {
       {sourceDoc && <SourceDocumentModal {...sourceDoc} onClose={() => setSourceDoc(null)} />}
     </>
   )
-}
-
-function interviewLoadingMessage(
-  interviewStarted: boolean,
-  phase: InterviewUiPhase,
-  turnCount: number,
-  liveAvatarMode: boolean,
-): string {
-  if (!interviewStarted) return liveAvatarMode ? 'Connecting LiveAvatar video…' : 'Preparing interview…'
-  if (turnCount === 0) return liveAvatarMode ? 'Connecting LiveAvatar video…' : 'Generating opening question…'
-  if (phase === 'english_answer') return 'Thinking…'
-  return 'AI is preparing the next step…'
 }
