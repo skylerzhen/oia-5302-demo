@@ -16,11 +16,10 @@ let assessmentInflightKey = ''
 
 export function buildAssessmentKey(input: {
   assessmentScore: number
-  matchScore: number
   turns: Array<{ id: string; text: string }>
 }) {
   const turnSig = input.turns.map((turn) => `${turn.id}:${turn.text.length}`).join(';')
-  return `${input.assessmentScore}|${input.matchScore}|${turnSig}`
+  return `${input.assessmentScore}|${turnSig}`
 }
 
 export async function cachedLlmMatch(

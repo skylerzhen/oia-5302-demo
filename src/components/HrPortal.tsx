@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Download, UserCheck, UserX, Zap } from 'lucide-react'
 import { useDemo } from '../context/DemoContext'
 import { EvidenceModal } from './EvidenceModal'
@@ -61,7 +61,6 @@ export function HrPortal() {
   const [journeyCandidate, setJourneyCandidate] = useState<string | null>(null)
   const [pillarWeights, setPillarWeights] = useState<PillarWeights>(() => loadPillarWeights())
   const [jdWeights, setJdWeights] = useState<JdDimensionWeight[]>(() => loadJdDimensionWeights())
-  const lastAssessmentLogKeyRef = useRef('')
 
   const filtered = useMemo(() => {
     return matches.filter((m) => {
@@ -121,10 +120,9 @@ export function HrPortal() {
   const assessmentKey = useMemo(
     () => buildAssessmentKey({
       assessmentScore,
-      matchScore: cvScore,
       turns: interviewTurns,
     }),
-    [assessmentScore, interviewTurns, cvScore],
+    [assessmentScore, interviewTurns],
   )
 
   useEffect(() => {
@@ -151,26 +149,26 @@ export function HrPortal() {
   useEffect(() => {
     if (!readyForInterviewReview || interviewTurns.length === 0) {
       setInterviewReport(null)
-      lastAssessmentLogKeyRef.current = ''
       return
     }
 
     let active = true
     setAssessmentLoading(true)
     setAssessmentError('')
-    cachedLlmAssessment(assessmentKey, () => localAi.generateAssessment({
-      turns: interviewTurns,
-      assessmentScore,
-      matchScore: cvScore,
-      jobTitle: FINANCE_JOB.title,
-    }))
+    cachedLlmAssessment(assessmentKey, () =>
+      localAi.generateAssessment({
+        turns: interviewTurns,
+        assessmentScore,
+        matchScore: cvScore,
+        jobTitle: FINANCE_JOB.title,
+      }).then((report) => {
+        log('System', 'LLM interview assessment generated', `${report.dimensions.length} dimensions · mode ${report.mode}`, 'H3')
+        return report
+      }),
+    )
       .then((report) => {
         if (!active) return
         setInterviewReport(report)
-        if (lastAssessmentLogKeyRef.current !== assessmentKey) {
-          lastAssessmentLogKeyRef.current = assessmentKey
-          log('System', 'LLM interview assessment generated', `${report.dimensions.length} dimensions · mode ${report.mode}`, 'H3')
-        }
       })
       .catch((error: Error) => {
         if (!active) return
