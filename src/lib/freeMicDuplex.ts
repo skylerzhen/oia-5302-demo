@@ -35,9 +35,15 @@ export function markBackchannelPlayed() {
   lastBackchannelAt = Date.now()
 }
 
+export function resetFollowUpPrefetchState() {
+  lastPrefetchKey = ''
+  lastPrefetchAt = 0
+}
+
 export function resetDuplexSession() {
   lastBackchannelAt = 0
   backchannelIndex = 0
+  resetFollowUpPrefetchState()
 }
 
 export type FollowUpPrefetch = {
@@ -45,12 +51,33 @@ export type FollowUpPrefetch = {
   promise: Promise<FollowUpResult>
 }
 
+/** Limits follow-up LLM prefetch storms while the candidate is still talking. */
+const PREFETCH_MIN_GROWTH_CHARS = 28
+const PREFETCH_COOLDOWN_MS = 4_000
+
+let lastPrefetchKey = ''
+let lastPrefetchAt = 0
+
 export function startFollowUpPrefetch(
   partial: string,
   generate: (answer: string) => Promise<FollowUpResult>,
 ): FollowUpPrefetch | null {
   const key = partial.trim().slice(0, 120)
   if (key.length < 20) return null
+
+  const now = Date.now()
+  if (lastPrefetchKey) {
+    const growth = key.length - lastPrefetchKey.length
+    const extendsPrior =
+      key.startsWith(lastPrefetchKey.slice(0, Math.min(32, lastPrefetchKey.length)))
+      || lastPrefetchKey.startsWith(key.slice(0, Math.min(32, key.length)))
+    if (extendsPrior && growth < PREFETCH_MIN_GROWTH_CHARS && now - lastPrefetchAt < PREFETCH_COOLDOWN_MS) {
+      return null
+    }
+  }
+
+  lastPrefetchKey = key
+  lastPrefetchAt = now
   return {
     partialKey: key,
     promise: generate(key),

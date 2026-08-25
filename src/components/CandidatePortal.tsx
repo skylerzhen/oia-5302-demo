@@ -21,6 +21,7 @@ import { unlockAudioPlayback } from '../lib/audioUnlock'
 import {
   prefetchMatchesUtterance,
   resetDuplexSession,
+  resetFollowUpPrefetchState,
   setInterviewDuplexMode,
   startFollowUpPrefetch,
   type FollowUpPrefetch,
@@ -515,6 +516,7 @@ export function CandidatePortal() {
       ? prefetchRef.current
       : null
     prefetchRef.current = null
+    resetFollowUpPrefetchState()
 
     if (avatar.isSpeaking) avatar.stop()
 
