@@ -5,7 +5,14 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Versioning foll
 
 ## [Unreleased]
 
+### Added
+- C1 evidence locate-in-CV, PDF/image preview, upload stepper, Review & submit scroll-to-bottom
+- C4 adaptive interview (5–10 questions, LLM closing); `interviewAvatarController` single-flight speak
+- HR H4 editable weighted composite scoring (CV / assessment / interview pillars)
+
 ### Changed
+- README: document LiveAvatar Lite cloud stack (2D is fallback only, not primary demo mode)
+- LiveAvatar speak: trust server `speak_ended` instead of polling LiveKit video element
 - Global UI: replace legacy teal/green accents with OIA navy design tokens (`App.css`, `index.css`)
 - Primary demo URL: https://oia-recruitment.uiscloud.cc
 
