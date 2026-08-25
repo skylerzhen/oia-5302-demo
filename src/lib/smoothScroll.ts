@@ -6,45 +6,29 @@ export function scrollContainerToBottom(container: HTMLElement, padding = 8) {
   return Math.max(0, container.scrollHeight - container.clientHeight - padding)
 }
 
-/** Force the main pane to the bottom — repeated passes catch late layout (Review & submit). */
-export function scrollContentPaneToBottom(options?: {
-  padding?: number
-  behavior?: ScrollBehavior
-}) {
+export function scrollContentPaneToTop(behavior: ScrollBehavior = 'auto') {
   const container = getContentScrollContainer()
-  if (!container) return
-  const padding = options?.padding ?? 8
-  const behavior = options?.behavior ?? 'smooth'
-  const top = Math.max(0, container.scrollHeight - container.clientHeight - padding)
-  container.scrollTo({ top, behavior })
+  if (container) container.scrollTo({ top: 0, behavior })
+  window.scrollTo({ top: 0, behavior })
 }
 
-export function scrollIntoViewEnd(element: HTMLElement | null, behavior: ScrollBehavior = 'smooth') {
-  if (!element) return
-  element.scrollIntoView({ behavior, block: 'end', inline: 'nearest' })
-}
-
-/**
- * After a new C1 block appears, scroll until the anchor (e.g. submit actions) is visible at the bottom.
- */
-export function scrollToC1RevealAnchor(anchor: HTMLElement | null) {
+/** Pin C1 to the content pane top. Do not scrollIntoView inner cards — that hides the heading. */
+export function scrollToC1PhaseStart(_anchor?: HTMLElement | null) {
   let cancelled = false
 
-  const run = (behavior: ScrollBehavior) => {
+  const run = () => {
     if (cancelled) return
-    scrollContentPaneToBottom({ padding: 8, behavior })
-    scrollIntoViewEnd(anchor, behavior)
+    scrollContentPaneToTop('auto')
   }
 
-  // Immediate + staggered — submission panel height settles over a few frames.
-  run('smooth')
-  const timers = [120, 320, 560, 900, 1300].map((ms) =>
-    window.setTimeout(() => run(ms === 1300 ? 'auto' : 'smooth'), ms),
-  )
+  run()
+  const raf = requestAnimationFrame(run)
+  const timer = window.setTimeout(run, 80)
 
   return () => {
     cancelled = true
-    timers.forEach((id) => window.clearTimeout(id))
+    cancelAnimationFrame(raf)
+    window.clearTimeout(timer)
   }
 }
 

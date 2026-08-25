@@ -288,6 +288,14 @@
   background: var(--oia-canvas);
 }
 
+.content:has(.c1-flow-review),
+.content:has(.c1-flow-confirm) {
+  display: flex;
+  flex-direction: column;
+  padding-top: 0.75rem;
+  overflow: hidden;
+}
+
 .card {
   background: var(--oia-card);
   border: 1px solid var(--oia-hairline);
@@ -699,30 +707,6 @@ button.source-file-link {
 .submission-review {
   margin-top: 1rem;
   scroll-margin-top: 1rem;
-  scroll-margin-bottom: 2rem;
-}
-
-.submission-review.is-entering {
-  animation: c1SubmissionEnter 720ms cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-.submission-review.submission-review--revealed {
-  animation: submissionRevealPulse 1.2s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-@keyframes submissionRevealPulse {
-  0% {
-    box-shadow: 0 0 0 0 rgba(15, 118, 110, 0.45);
-    border-color: rgba(15, 118, 110, 0.55);
-  }
-  35% {
-    box-shadow: 0 0 0 6px rgba(15, 118, 110, 0.18);
-    border-color: rgba(15, 118, 110, 0.85);
-  }
-  100% {
-    box-shadow: 0 1px 2px rgba(14, 23, 38, 0.04);
-    border-color: var(--oia-hairline);
-  }
 }
 
 .cv-review-panel {
@@ -731,20 +715,96 @@ button.source-file-link {
 
 .c1-flow {
   position: relative;
+  width: 100%;
+}
+
+.content:has(.c1-flow-review) > .c1-flow-review,
+.content:has(.c1-flow-confirm) > .c1-flow-confirm {
+  flex: 1;
+  min-height: 0;
+}
+
+.c1-flow-review,
+.c1-flow-confirm {
+  display: flex;
+  flex-direction: column;
+}
+
+.c1-section-head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  flex-shrink: 0;
+}
+
+.c1-phase-steps {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-width: 28rem;
+}
+
+.c1-phase-steps li {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--oia-text-secondary);
+}
+
+.c1-phase-steps li.is-active {
+  color: var(--oia-navy-primary);
+}
+
+.c1-phase-steps li.is-done {
+  color: var(--oia-green);
+}
+
+.c1-phase-index {
+  width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.68rem;
+  font-weight: 700;
+  border: 1px solid var(--oia-hairline);
+  background: #fff;
+  flex-shrink: 0;
+}
+
+.c1-phase-steps li.is-active .c1-phase-index {
+  background: var(--oia-navy-primary);
+  color: #fff;
+  border-color: var(--oia-navy-primary);
+}
+
+.c1-phase-steps li.is-done .c1-phase-index {
+  background: var(--oia-green);
+  color: #fff;
+  border-color: var(--oia-green);
 }
 
 .c1-section-head .c1-section-subtitle {
+  margin: 0;
   transition: opacity 360ms cubic-bezier(0.22, 1, 0.36, 1), transform 360ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.c1-flow-upload .c1-section-subtitle {
+.c1-flow-upload .c1-section-subtitle,
+.c1-flow-review .c1-section-subtitle,
+.c1-flow-confirm .c1-section-subtitle {
   opacity: 1;
   transform: translateY(0);
 }
 
-.c1-flow-review .c1-section-subtitle {
-  opacity: 1;
-  transform: translateY(0);
+.c1-flow-review .c1-section-subtitle,
+.c1-flow-confirm .c1-section-subtitle {
   animation: c1SubtitleIn 420ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
@@ -802,56 +862,23 @@ button.source-file-link {
   50% { box-shadow: 0 0 0 6px rgba(15, 61, 99, 0.06); }
 }
 
-.c1-review-card--hidden {
-  opacity: 0;
-  transform: translateY(28px) scale(0.985);
-  max-height: 0;
-  overflow: hidden;
-  pointer-events: none;
-  margin-top: 0;
-  border-color: transparent;
+.c1-phase-slot {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
-.c1-review-card--entering {
-  animation: c1ReviewEnter 760ms cubic-bezier(0.22, 1, 0.36, 1) both;
-  transform-origin: top center;
+.c1-phase-slot.is-entering {
+  animation: c1PhaseEnter 560ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-.c1-review-card--visible {
-  opacity: 1;
-  transform: none;
+.c1-review-card.is-entering,
+.c1-confirm-card.is-entering {
+  animation: c1PhaseEnter 560ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-@keyframes c1ReviewEnter {
-  0% {
-    opacity: 0;
-    transform: translateY(32px) scale(0.985);
-  }
-  100% {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
-.c1-review-card--entering .cv-evidence-source {
-  animation: c1SourcePanelIn 680ms cubic-bezier(0.22, 1, 0.36, 1) 140ms both;
-}
-
-.c1-review-card--entering .cv-evidence-main {
-  animation: c1FieldsPanelIn 680ms cubic-bezier(0.22, 1, 0.36, 1) 240ms both;
-}
-
-@keyframes c1SourcePanelIn {
-  from { opacity: 0; transform: translateX(-20px); }
-  to { opacity: 1; transform: translateX(0); }
-}
-
-@keyframes c1FieldsPanelIn {
-  from { opacity: 0; transform: translateX(20px); }
-  to { opacity: 1; transform: translateX(0); }
-}
-
-@keyframes c1SubmissionEnter {
+@keyframes c1PhaseEnter {
   from { opacity: 0; transform: translateY(24px); }
   to { opacity: 1; transform: translateY(0); }
 }
@@ -878,21 +905,15 @@ button.source-file-link {
 @media (prefers-reduced-motion: reduce) {
   .c1-upload-card.is-entering,
   .c1-upload-card.is-exiting,
-  .c1-review-card--entering,
-  .c1-review-card--entering .cv-evidence-source,
-  .c1-review-card--entering .cv-evidence-main,
-  .submission-review.is-entering,
+  .c1-phase-slot.is-entering,
+  .c1-review-card.is-entering,
+  .c1-confirm-card.is-entering,
+  .c1-confirm-success,
   .c1-flow-review .c1-section-subtitle,
+  .c1-flow-confirm .c1-section-subtitle,
   .upload-stage-step.active .upload-stage-dot,
   .upload-progress.done {
     animation: none !important;
-  }
-
-  .c1-review-card--hidden {
-    opacity: 1;
-    transform: none;
-    max-height: none;
-    pointer-events: auto;
   }
 
   .upload-progress-bar span {
@@ -916,7 +937,97 @@ button.source-file-link {
   border: 1px solid var(--oia-hairline);
   border-radius: var(--oia-radius-card);
   background: var(--oia-card);
-  scroll-margin-top: 1rem;
+  scroll-margin-top: 0;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.c1-flow-review .c1-review-card .cv-evidence-reviewer {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+}
+
+.c1-flow-review .cv-evidence-source,
+.c1-flow-review .cv-evidence-main {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.c1-flow-review .cv-evidence-frame,
+.c1-flow-review .cv-evidence-image {
+  min-height: 0;
+}
+
+.c1-confirm-card {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+  scroll-margin-top: 0;
+}
+
+.c1-confirm-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 1rem 1.1rem 0.85rem;
+  border-bottom: 1px solid var(--oia-hairline);
+  flex-shrink: 0;
+}
+
+.c1-confirm-head h2 {
+  margin: 0 0 0.25rem;
+  font-size: 1.05rem;
+}
+
+.c1-confirm-head p {
+  margin: 0;
+  color: var(--oia-text-secondary);
+  font-size: 0.85rem;
+}
+
+.c1-confirm-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0.85rem 1.1rem;
+}
+
+.c1-confirm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.1rem;
+  border-top: 1px solid var(--oia-hairline);
+  background: rgba(255, 255, 255, 0.96);
+  flex-shrink: 0;
+}
+
+.c1-confirm-success {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  min-height: 16rem;
+  text-align: center;
+  animation: c1SubtitleIn 420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.c1-confirm-success strong {
+  font-size: 1.05rem;
+}
+
+.c1-confirm-success p {
+  margin: 0;
+  color: var(--oia-text-secondary);
 }
 
 .cv-source-preview {
@@ -2634,16 +2745,97 @@ textarea {
 }
 
 /* H3 interview review */
+.recording-review {
+  padding: 0;
+  overflow: hidden;
+}
+
+.recording-review-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 1rem 1.1rem 0.85rem;
+  border-bottom: 1px solid var(--oia-hairline);
+}
+
+.recording-review-head h2 {
+  margin: 0 0 0.2rem;
+  font-size: 1.05rem;
+}
+
+.recording-review-head p {
+  margin: 0;
+  color: var(--oia-text-secondary);
+  font-size: 0.85rem;
+}
+
+.recording-review-head code {
+  font-size: 0.78rem;
+}
+
+.recording-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.55rem;
+}
+
 .interview-review {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(280px, 0.95fr) 1.05fr;
   gap: 1rem;
+  padding: 1rem 1.1rem 1.1rem;
 }
 
 .interview-review-player {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+  min-width: 0;
+}
+
+.interview-review-player .avatar-panel {
+  min-height: 0;
+  width: 100%;
+  max-width: none;
+}
+
+.interview-review-player .video-frame {
+  max-width: none;
+}
+
+.recording-now-playing {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.recording-speaker {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--oia-navy-primary);
+}
+
+.recording-speaker.candidate {
+  color: var(--oia-green);
+}
+
+.recording-timeline {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.recording-timeline input[type='range'] {
+  width: 100%;
+  accent-color: var(--oia-navy-primary);
+}
+
+.recording-transcript-hint {
+  margin: 0 0 0.45rem;
 }
 
 .playback-controls {
@@ -2654,7 +2846,9 @@ textarea {
 }
 
 .transcript-review {
-  max-height: 520px;
+  max-height: 560px;
+  overflow: auto;
+  min-width: 0;
 }
 
 .turn-btn {
@@ -2670,7 +2864,7 @@ textarea {
 
 .turn-btn.active-turn {
   background: var(--oia-slate-tint);
-  border-color: var(--oia-hairline);
+  border-color: var(--oia-navy-primary);
 }
 
 /* Current candidate card (used in H2/H3/H4) */
@@ -3228,6 +3422,24 @@ textarea {
   align-items: center;
   justify-content: center;
   position: relative;
+}
+
+.liveavatar-static-preview {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center top;
+  background: #0a1628;
+}
+
+.liveavatar-static-stage.has-preview {
+  background: #0a1628;
+}
+
+.liveavatar-static-stage.speaking.has-preview .liveavatar-static-preview {
+  animation: liveavatar-head-speak 0.5s ease-in-out infinite alternate;
 }
 
 .liveavatar-static-placeholder {

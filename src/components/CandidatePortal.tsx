@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { CheckCircle2, ChevronUp, FileUp, Play, Upload } from 'lucide-react'
 import { useDemo } from '../context/DemoContext'
 import { AvatarPanel } from './AvatarPanel'
@@ -35,7 +35,7 @@ import { getPrimaryMatch, loadLlmMatches } from '../lib/llmMatching'
 import { profileFieldsKey } from '../lib/profileFieldsKey'
 import type { CandidateMatchWithTips } from '../lib/matching'
 import { scrollPageToTop } from '../lib/scrollPageToTop'
-import { scrollToC1RevealAnchor, pulseRevealElement } from '../lib/smoothScroll'
+import { getContentScrollContainer } from '../lib/smoothScroll'
 import type { CandidateStepId, FieldStatus, InterviewTurn, ProfileTagGroup, WorkExperienceEntry } from '../types'
 
 const UPLOAD_STAGE_TRACK = [
@@ -45,8 +45,6 @@ const UPLOAD_STAGE_TRACK = [
   { id: 'mapping', label: 'Map' },
   { id: 'done', label: 'Review' },
 ] as const
-
-type C1ReviewAnim = 'hidden' | 'entering' | 'visible'
 
 function uploadStageIndex(stage: CvUploadProgress['stage']) {
   if (stage === 'idle' || stage === 'error') return -1
@@ -119,11 +117,7 @@ export function CandidatePortal() {
   const [appliedPreviewUrl, setAppliedPreviewUrl] = useState('')
   const [appliedPreviewKind, setAppliedPreviewKind] = useState<CvPreviewKind>('html')
   const [evidenceLocate, setEvidenceLocate] = useState<CvEvidenceLocateRequest | null>(null)
-  const [c1UploadExiting, setC1UploadExiting] = useState(false)
-  const [c1ReviewAnim, setC1ReviewAnim] = useState<C1ReviewAnim>(() => (
-    fields.some((field) => field.value.trim()) ? 'visible' : 'hidden'
-  ))
-  const [submissionReveal, setSubmissionReveal] = useState(false)
+  const [c1Submitting, setC1Submitting] = useState(false)
   const previewBlobRef = useRef<string | null>(null)
   const parsePreviewKeyRef = useRef<string | null>(null)
   const [lastUploadInput, setLastUploadInput] = useState<{
@@ -158,8 +152,10 @@ export function CandidatePortal() {
     if (url?.startsWith('blob:')) previewBlobRef.current = url
   }
 
-  function scrollC1ToBottom(anchor?: HTMLElement | null) {
-    return scrollToC1RevealAnchor(anchor ?? submissionActionsRef.current)
+  function pinC1ToTop() {
+    const pane = getContentScrollContainer()
+    if (pane) pane.scrollTop = 0
+    window.scrollTo(0, 0)
   }
 
   useEffect(() => () => revokePreviewBlob(), [])
@@ -219,7 +215,6 @@ export function CandidatePortal() {
   useEffect(() => {
     const raf = requestAnimationFrame(() => {
       scrollPageToTop()
-      stepTopRef.current?.scrollIntoView({ block: 'start' })
     })
     return () => cancelAnimationFrame(raf)
   }, [step])
@@ -281,77 +276,15 @@ export function CandidatePortal() {
       .catch(() => undefined)
   }, [])
 
-  useEffect(() => {
-    if (!reviewReady) {
-      setSubmissionReveal(false)
-      return
-    }
-
-    setSubmissionReveal(true)
-
-    let cancelled = false
-    let cancelScroll: (() => void) | undefined
-    let attempts = 0
-
-    const startScroll = () => {
-      if (cancelled) return
-      const anchor = submissionActionsRef.current
-      if (anchor || attempts >= 24) {
-        cancelScroll = scrollC1ToBottom(anchor)
-        window.setTimeout(() => {
-          pulseRevealElement(submissionReviewRef.current, 'submission-review--revealed')
-        }, 700)
-        return
-      }
-      attempts += 1
-      requestAnimationFrame(startScroll)
-    }
-
-    startScroll()
-    return () => {
-      cancelled = true
-      cancelScroll?.()
-    }
-  }, [reviewReady])
-
-  useEffect(() => {
-    if (!parsePreview) {
-      if (profileFromCv) setC1ReviewAnim('visible')
-      return
-    }
-
-    const revealKey = `${parsePreview.sampleId}:${parsePreview.fileName}`
-    if (parsePreviewKeyRef.current === revealKey) return
-    parsePreviewKeyRef.current = revealKey
-
-    const firstReveal = !profileFromCv
-    if (firstReveal) {
-      setC1UploadExiting(true)
-      setC1ReviewAnim('entering')
-      const exitTimer = window.setTimeout(() => setC1UploadExiting(false), 540)
-      const enterTimer = window.setTimeout(() => {
-        setC1ReviewAnim('visible')
-        scrollC1ToBottom(confirmFieldsRef.current)
-      }, 300)
-      return () => {
-        window.clearTimeout(exitTimer)
-        window.clearTimeout(enterTimer)
-      }
-    }
-
-    setC1ReviewAnim('entering')
-    const timer = window.setTimeout(() => {
-      setC1ReviewAnim('visible')
-      scrollC1ToBottom(confirmFieldsRef.current)
-    }, 100)
-    return () => window.clearTimeout(timer)
-  }, [parsePreview, profileFromCv])
+  useLayoutEffect(() => {
+    if (step !== 'C1') return
+    pinC1ToTop()
+  }, [step, parsePreview, reviewReady, profileFromCv, c1Submitting])
 
   useEffect(() => {
     if (step !== 'C1') {
-      setC1UploadExiting(false)
-      setC1ReviewAnim('hidden')
-      setSubmissionReveal(false)
+      setC1Submitting(false)
+      setReviewReady(false)
       parsePreviewKeyRef.current = null
     }
   }, [step])
@@ -387,13 +320,8 @@ export function CandidatePortal() {
         },
         setUploadProgress,
       )
-      if (!profileFromCv) {
-        setC1UploadExiting(true)
-        setC1ReviewAnim('entering')
-      } else {
-        setC1ReviewAnim('entering')
-      }
       setParsePreview(result)
+      pinC1ToTop()
       adoptPreviewBlob(result.previewBlobUrl)
       log('System', 'LLM CV parsing invoked', `${result.fileName}; ${result.fileSize} bytes; mode: ${result.mode}`, 'C1')
     } catch (error) {
@@ -452,14 +380,11 @@ export function CandidatePortal() {
   }
 
   function cancelParsePreview() {
-    setC1ReviewAnim('hidden')
-    window.setTimeout(() => {
-      setParsePreview(null)
-      parsePreviewKeyRef.current = null
-      revokePreviewBlob()
-      setEvidenceLocate(null)
-      setUploadProgress({ stage: 'idle', progress: 0, message: '' })
-    }, 340)
+    setParsePreview(null)
+    parsePreviewKeyRef.current = null
+    revokePreviewBlob()
+    setEvidenceLocate(null)
+    setUploadProgress({ stage: 'idle', progress: 0, message: '' })
   }
 
   function updateParsePreviewScalar(key: string, value: string) {
@@ -663,6 +588,25 @@ export function CandidatePortal() {
     log('Candidate', 'Fields confirmed', 'Parsed values accepted; missing fields left blank', 'C1')
   }
 
+  function goToConfirm() {
+    confirmAllFields()
+    pinC1ToTop()
+    setReviewReady(true)
+  }
+
+  function submitConfirmedProfile() {
+    if (c1Submitting) return
+    setC1Submitting(true)
+    setPipeline({ profileSubmitted: true })
+    syncIntegration('jadarah.profileWrite', 'C1', 'Candidate profile after review')
+    log('Candidate', 'Profile submitted', 'Simulated Jadarah profile write-back after candidate review', 'C1')
+    window.setTimeout(() => {
+      setReviewReady(false)
+      setC1Submitting(false)
+      setStep('C2')
+    }, 900)
+  }
+
   const canSubmitProfile =
     profileFromCv &&
     hasCvUploadEvidence(fields, uploadedSamples, profileWorkHistory) &&
@@ -857,9 +801,19 @@ export function CandidatePortal() {
     )
   }
 
-  const showInitialUpload = !parsePreview && !profileFromCv
-  const showUploadCard = showInitialUpload || c1UploadExiting
   const c1InReviewMode = Boolean(parsePreview || profileFromCv)
+  const c1Phase: 'upload' | 'review' | 'confirm' = c1Submitting || (reviewReady && profileFromCv && !parsePreview)
+    ? 'confirm'
+    : c1InReviewMode
+      ? 'review'
+      : 'upload'
+  const c1PhaseIndex = c1Phase === 'upload' ? 0 : c1Phase === 'review' ? 1 : 2
+  const c1Subtitle =
+    c1Phase === 'confirm'
+      ? 'Check the summary, then confirm to write the profile to Jadarah (simulated).'
+      : c1Phase === 'review'
+        ? 'Review extracted fields against your CV, edit if needed, then continue.'
+        : 'Upload your CV — AI extracts fields for human review, then submit to Jadarah (simulated).'
 
   return (
     <>
@@ -875,35 +829,42 @@ export function CandidatePortal() {
       >
           <div ref={stepTopRef} className="step-scroll-anchor" aria-hidden="true" />
           {step === 'C1' && (
-            <section className={`stack c1-flow ${c1InReviewMode ? 'c1-flow-review' : 'c1-flow-upload'}`}>
-              <header className={`section-head c1-section-head ${c1InReviewMode ? 'is-review' : 'is-upload'}`}>
+            <section className={`stack c1-flow c1-flow-${c1Phase}`}>
+              <header className={`section-head c1-section-head is-${c1Phase}`}>
                 <h1>C1 · Apply & confirm profile</h1>
-                <p className="c1-section-subtitle">
-                  {c1InReviewMode
-                    ? 'Review extracted fields against your CV, edit if needed, then confirm for Jadarah (simulated).'
-                    : 'Upload your CV — AI extracts fields for human review, then submit to Jadarah (simulated).'}
-                </p>
+                <ol className="c1-phase-steps" aria-label="C1 steps">
+                  {['Upload', 'Review', 'Submit'].map((label, index) => (
+                    <li
+                      key={label}
+                      className={`${index < c1PhaseIndex ? 'is-done' : ''} ${index === c1PhaseIndex ? 'is-active' : ''}`}
+                    >
+                      <span className="c1-phase-index">{index < c1PhaseIndex ? '✓' : index + 1}</span>
+                      {label}
+                    </li>
+                  ))}
+                </ol>
+                <p className="c1-section-subtitle">{c1Subtitle}</p>
               </header>
 
-              {showUploadCard && (
+              {c1Phase === 'upload' && (
                 <div
-                  className={`card c1-upload-card ${uploadBusy ? 'is-busy' : ''} ${c1UploadExiting ? 'is-exiting' : 'is-entering'}`}
+                  className={`card c1-upload-card ${uploadBusy ? 'is-busy' : ''} is-entering`}
                 >
                   {renderCvUploadControls()}
                 </div>
               )}
 
-              {c1InReviewMode && (
-                <>
+              {c1Phase === 'review' && (
+                <div className="c1-phase-slot is-entering">
                   {(showCompactUpload || uploadExpanded || uploadBusy) && !parsePreview && (
-                    <div className="card c1-upload-card c1-upload-card-inline is-entering">
+                    <div className="card c1-upload-card c1-upload-card-inline">
                       {renderCvUploadControls()}
                     </div>
                   )}
 
                   <div
                     ref={confirmFieldsRef}
-                    className={`card c1-review-card c1-review-card--${c1ReviewAnim}`}
+                    className="card c1-review-card"
                   >
                     <CvReviewPanel
                       fileName={parsePreview?.fileName ?? appliedCvFileName}
@@ -938,12 +899,9 @@ export function CandidatePortal() {
                             type="button"
                             className="primary"
                             disabled={!canSubmitProfile}
-                            onClick={() => {
-                              confirmAllFields()
-                              setReviewReady(true)
-                            }}
+                            onClick={goToConfirm}
                           >
-                            Review & submit
+                            Continue to submit
                           </button>
                           {submitBlockReason && <p className="muted tiny">{submitBlockReason}</p>}
                           {draftSaved && <p className="ok-text">Draft saved.</p>}
@@ -951,39 +909,52 @@ export function CandidatePortal() {
                       )}
                     />
                   </div>
-                </>
+                </div>
               )}
 
-              {reviewReady && profileFromCv && !parsePreview && (
+              {c1Phase === 'confirm' && (
+                <div className="c1-phase-slot is-entering">
                 <section
                   ref={submissionReviewRef}
-                  className={`card submission-review ${submissionReveal ? 'is-entering' : ''}`}
+                  className={`card c1-confirm-card ${c1Submitting ? 'is-submitting' : ''}`}
                 >
-                  <header className="section-head">
-                    <div>
-                      <h2>Review & submit</h2>
-                      <p>Final candidate confirmation before simulated Jadarah profile write-back.</p>
+                  {c1Submitting ? (
+                    <div className="c1-confirm-success" role="status" aria-live="polite">
+                      <CheckCircle2 size={28} className="ok" aria-hidden />
+                      <strong>Profile submitted</strong>
+                      <p>Writing to Jadarah (simulated endpoint)…</p>
                     </div>
-                  </header>
-                  <CvProfilePanel
-                    fields={fields}
-                    skills={profileSkills}
-                    languages={profileLanguages}
-                    workHistory={profileWorkHistory}
-                    readOnly
-                  />
-                  <div ref={submissionActionsRef} className="actions">
-                    <button type="button" onClick={() => setReviewReady(false)}>Back to edit</button>
-                    <button type="button" className="primary" onClick={() => {
-                      setPipeline({ profileSubmitted: true })
-                      syncIntegration('jadarah.profileWrite', 'C1', 'Candidate profile after review')
-                      log('Candidate', 'Profile submitted', 'Simulated Jadarah profile write-back after candidate review', 'C1')
-                      setStep('C2')
-                    }}>
-                      Confirm & submit profile
-                    </button>
-                  </div>
+                  ) : (
+                    <>
+                      <header className="c1-confirm-head">
+                        <div>
+                          <h2>Confirm & submit</h2>
+                          <p>Final check before the simulated Jadarah profile write-back.</p>
+                        </div>
+                        <span className="integration-sim-badge">Simulated endpoint</span>
+                      </header>
+                      <div className="c1-confirm-body">
+                        <CvProfilePanel
+                          fields={fields}
+                          skills={profileSkills}
+                          languages={profileLanguages}
+                          workHistory={profileWorkHistory}
+                          readOnly
+                        />
+                      </div>
+                      <div ref={submissionActionsRef} className="c1-confirm-actions">
+                        <button type="button" onClick={() => {
+                          setReviewReady(false)
+                          window.setTimeout(() => pinC1ToTop(), 0)
+                        }}>Back to edit</button>
+                        <button type="button" className="primary" onClick={submitConfirmedProfile}>
+                          Confirm & submit profile
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </section>
+                </div>
               )}
             </section>
           )}
