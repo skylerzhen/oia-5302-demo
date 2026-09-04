@@ -182,7 +182,7 @@ export function CandidateJourneyPanel({
                 {pipeline.shortlisted
                   ? 'Shortlisted'
                   : pipeline.disqualified
-                    ? 'Disqualified'
+                    ? 'Not shortlisted'
                     : 'Pending'}
               </span>
             </div>
@@ -190,7 +190,7 @@ export function CandidateJourneyPanel({
               {pipeline.shortlisted
                 ? 'Candidate advanced to final decision stage'
                 : pipeline.disqualified
-                  ? 'Candidate removed from pipeline'
+                  ? 'Candidate not shortlisted at this stage'
                   : 'Awaiting HR shortlist decision'}
             </p>
           </section>

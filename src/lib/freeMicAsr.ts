@@ -45,7 +45,7 @@ export interface FreeMicSession {
   stop: () => void
 }
 
-/** Always-on browser ASR for full-duplex interview (自由麦 · 边听边回). */
+/** Always-on browser ASR for full-duplex interview. */
 export function startFreeMicSession(options: FreeMicSessionOptions): FreeMicSession {
   const Ctor = recognitionCtor()
   if (!Ctor) {

@@ -105,6 +105,7 @@ UIS 打开 https://oia-rfq-5302.surge.sh 即可用 LLM，**无需在本机装 No
 | 交付物 | 说明 |
 |--------|------|
 | Demo 链接 | `https://oia-rfq-5302.surge.sh` |
+| **Backend API 文档** | [`docs/demo-5302/backend-api.md`](./backend-api.md) — endpoints, auth, payloads for UIS frontend |
 | 云端 API 说明 | 「Demo 使用云端 LLM API；生产按技术方案阿曼 on-prem 部署」 |
 | 可选：仓库只读 | 供 UIS 技术同事复现 |
 

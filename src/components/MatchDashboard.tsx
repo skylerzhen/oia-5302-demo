@@ -100,7 +100,7 @@ export function MatchDashboard({
                   </td>
                   <td>{m.matchedCount}/{m.totalDimensions}</td>
                   <td>{m.candidate.yearsExperience} yrs</td>
-                  <td><span className={`status-pill ${qualified ? 'ok' : 'no'}`}>{qualified ? 'Qualified' : 'Disqualified'}</span></td>
+                  <td><span className={`status-pill ${qualified ? 'ok' : 'no'}`}>{qualified ? 'Qualified' : 'Below threshold'}</span></td>
                 </tr>
               )})}
             </tbody>

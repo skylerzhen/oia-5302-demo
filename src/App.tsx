@@ -75,35 +75,20 @@ export default function App() {
 
   function selectRole(role: UserRole) {
     patchSession((prev) => {
-      const readyForHrReview =
-        prev.pipeline.interviewCompleted || prev.interviewTurns.length > 0
-      const needsHrSeed = role === 'hr' && !readyForHrReview
-
-      if (needsHrSeed) {
-        return {
-          role,
-          ...createDemoPipelinePatch(),
-          auditLog: [
-            ...prev.auditLog,
-            createAuditEntry(
-              'System',
-              'Demo data loaded',
-              'Sample application + interview auto-loaded for HR demo',
-              'H1',
-            ),
-          ],
-        }
-      }
-
       if (role === 'candidate') {
-        const fresh = defaultSession()
         const jump = readDemoJumpTarget()
-        if (jump === 'c4') {
+        const hasApplication =
+          prev.pipeline.profileSubmitted ||
+          prev.fields.some((f) => f.value.trim().length > 0)
+
+        if (jump === 'c4' && !hasApplication) {
           return {
-            ...fresh,
+            ...prev,
             role: 'candidate',
+            offline: false,
             ...createDemoCandidateC4Patch(),
             auditLog: [
+              ...prev.auditLog,
               createAuditEntry(
                 'System',
                 'Demo shortcut',
@@ -113,22 +98,28 @@ export default function App() {
             ],
           }
         }
+
+        const resumed = hasApplication
         return {
-          ...fresh,
+          ...prev,
           role: 'candidate',
           offline: false,
-          auditLog: [
-            createAuditEntry(
-              'Candidate',
-              'Session started',
-              'Fresh candidate demo session; prior inputs cleared',
-              'C1',
-            ),
-          ],
+          auditLog: resumed
+            ? prev.auditLog
+            : [
+              ...prev.auditLog,
+              createAuditEntry(
+                'Candidate',
+                'Session started',
+                'New application — upload CV to begin',
+                'C1',
+              ),
+            ],
         }
       }
 
-      return { ...prev, role }
+      // HR reads the same session record as the candidate portal — no auto-seed overwrite.
+      return { ...prev, role, offline: false }
     })
   }
 

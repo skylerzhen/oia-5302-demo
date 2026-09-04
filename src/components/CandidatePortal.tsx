@@ -36,7 +36,7 @@ import {
 } from '../lib/freeMicDuplex'
 import { useInterviewAvatar } from '../hooks/useInterviewAvatar'
 import { controlledViewUrl } from '../lib/controlledDocUrl'
-import { runCvUploadFlow, type CvUploadProgress, type CvUploadResult } from '../lib/cvUploadFlow'
+import { runCvUploadFlow, generateCvUploadId, type CvUploadProgress, type CvUploadResult } from '../lib/cvUploadFlow'
 import { resolveCvSourceUrl } from '../lib/cvSourceUrl'
 import {
   buildImprovementTips,
@@ -103,6 +103,7 @@ export function CandidatePortal() {
     interviewTurns, setInterviewTurns,
     interviewConfig,
     assessmentScore, setAssessmentScore,
+    disqualifiedReason, finalReason,
     candidateStep: step, setCandidateStep: setStep, logout,
   } = useDemo()
 
@@ -186,7 +187,12 @@ export function CandidatePortal() {
     if (add) setInterviewTurns((prev) => [...prev, turn])
   }
 
-  const interviewPhase = getInterviewUiPhase(interviewTurns, pipeline.interviewCompleted, interviewClosingReady)
+  const interviewPhase = getInterviewUiPhase(
+    interviewTurns,
+    pipeline.interviewCompleted,
+    interviewClosingReady,
+    interviewConfig.maxAnswers,
+  )
   const interviewProgress = configInterviewProgress(interviewConfig, interviewTurns)
   const match = llmMatch
   const fieldsKey = useMemo(() => profileFieldsKey(fields), [fields])
@@ -365,9 +371,13 @@ export function CandidatePortal() {
     if (!file || uploadBusy) return
     const normalized = file.name.toLowerCase()
     const isScannedPdf = normalized.includes('noor') || normalized.includes('scan')
-    const sampleId = resolveSampleProfileId(file.name)
-      ?? (isScannedPdf ? 'pdf-scan' : normalized.endsWith('.docx') ? 'docx-en' : `local-${normalized}`)
-    void processCvUpload({ sampleId, label: file.name, file, isScannedPdf })
+    const controlledId = resolveSampleProfileId(file.name)
+    void processCvUpload({
+      sampleId: controlledId ?? generateCvUploadId(),
+      label: file.name,
+      file,
+      isScannedPdf: controlledId === 'pdf-scan' || isScannedPdf,
+    })
   }
 
   function acceptParsePreview() {
@@ -518,6 +528,8 @@ export function CandidatePortal() {
   async function handleCandidateAnswerSubmit(ans: string) {
     const trimmed = ans.trim()
     if (!trimmed || avatar.isThinking) return
+    if (interviewClosingReady || pipeline.interviewCompleted) return
+    if (countCandidateAnswers(interviewTurns) >= interviewConfig.maxAnswers) return
     unlockAudioPlayback()
     setLlmError('')
 
@@ -1380,12 +1392,28 @@ export function CandidatePortal() {
                 <li className="done">Profile submitted</li>
                 <li className="done">Assessment completed ({assessmentScore}%)</li>
                 <li className="done">Interview completed</li>
-                <li className={pipeline.shortlisted ? 'done' : 'pending'}>
-                  HR shortlist {pipeline.shortlisted ? '✓' : '— pending recruiter review'}
+                <li className={pipeline.disqualified ? 'done' : pipeline.shortlisted ? 'done' : 'pending'}>
+                  HR shortlist{' '}
+                  {pipeline.disqualified
+                    ? '— not shortlisted'
+                    : pipeline.shortlisted
+                      ? '✓'
+                      : '— pending recruiter review'}
                 </li>
                 <li className={pipeline.finalDecisionMade ? 'done' : 'pending'}>
-                  Final decision {pipeline.finalDecisionMade ? '✓' : '— not yet'}
+                  Final decision{' '}
+                  {pipeline.finalDecisionMade
+                    ? pipeline.finalDecisionType === 'hire'
+                      ? '✓ Recommended for hire'
+                      : '✓ Not selected'
+                    : '— not yet'}
                 </li>
+                {pipeline.disqualified && disqualifiedReason && (
+                  <li className="muted tiny">HR note: {disqualifiedReason}</li>
+                )}
+                {pipeline.finalDecisionMade && finalReason && (
+                  <li className="muted tiny">Decision reason: {finalReason}</li>
+                )}
               </ul>
               <p className="muted tiny">You cannot see other candidates or make hiring decisions in this portal.</p>
             </section>

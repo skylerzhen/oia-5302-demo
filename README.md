@@ -28,6 +28,7 @@ Vertical-slice prototype for the evaluation demo journey (**S0–S8**).
 > **不是「纯 2D mock」**：线上 Surge 构建注入 `VITE_LLM_API_URL` + `VITE_API_SECRET`，C4 默认走 **LiveAvatar 视频流**。2D 仅作降级/离线演示。
 
 配置 LiveAvatar：[`docs/demo-5302/liveavatar-setup.md`](./docs/demo-5302/liveavatar-setup.md)  
+**UIS 前端对接后端 API：** [`docs/demo-5302/backend-api.md`](./docs/demo-5302/backend-api.md)  
 API 额度防护（rate limit、prefetch 限流）：[`docs/demo-5302/api-cost-guards.md`](./docs/demo-5302/api-cost-guards.md)
 
 ## 快速开始

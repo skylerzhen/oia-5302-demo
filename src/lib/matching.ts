@@ -183,8 +183,10 @@ export function getInterviewUiPhase(
   turns: { speaker: string; language: string }[],
   completed: boolean,
   closingReady = false,
+  maxAnswers?: number,
 ): InterviewUiPhase {
   if (completed || closingReady) return 'ready_to_finish'
+  if (maxAnswers != null && countCandidateAnswers(turns) >= maxAnswers) return 'ready_to_finish'
   if (turns.length === 0) return 'idle'
 
   const candidateTurns = turns.filter((t) => t.speaker === 'candidate')

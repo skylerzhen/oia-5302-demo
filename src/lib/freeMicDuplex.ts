@@ -1,6 +1,6 @@
 import type { FollowUpResult } from './localAi'
 
-/** Full-duplex interview (自由麦 · 边听边回) — mic stays open while avatar speaks. */
+/** Full-duplex interview — mic stays open while avatar speaks. */
 let duplexEnabled = false
 
 export function setInterviewDuplexMode(enabled: boolean) {

@@ -1,5 +1,5 @@
 import type { CvParsePayload } from '../types'
-import { applyCvParsePayload, getCvParseProfile } from '../data/cvParseProfiles'
+import { applyCvParsePayload, getCvParseProfile, isKnownCvSampleId } from '../data/cvParseProfiles'
 import { previewKindFromFileName } from './cvSourceLocate'
 import { resolveCvSourceUrl } from './cvSourceUrl'
 import { localAi, type CvParseResult } from './localAi'
@@ -13,8 +13,13 @@ export interface CvUploadProgress {
   message: string
 }
 
+export function generateCvUploadId() {
+  return `upload-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+}
+
 export interface CvUploadInput {
   sampleId?: string
+  uploadId?: string
   filePath?: string
   file?: File
   fileName: string
@@ -22,6 +27,7 @@ export interface CvUploadInput {
 }
 
 export interface CvUploadResult extends CvParsePayload {
+  uploadId: string
   sampleId: string
   fileName: string
   fileSize: number
@@ -87,14 +93,15 @@ async function readLocalFile(file: File, onProgress: (p: CvUploadProgress) => vo
 }
 
 async function parseWithAdapter(input: {
-  sampleId: string
+  uploadId: string
+  sampleId?: string
   fileName: string
   fileSize: number
   fileType: string
   isScannedPdf: boolean
   documentText?: string
 }): Promise<CvParseResult> {
-  const profile = getCvParseProfile(input.sampleId)
+  const profile = input.sampleId ? getCvParseProfile(input.sampleId) : undefined
   const apiBase = import.meta.env.VITE_LLM_API_URL?.trim()
 
   if (!apiBase && profile) {
@@ -109,6 +116,7 @@ async function parseWithAdapter(input: {
 
   try {
     return await localAi.parseCv({
+      uploadId: input.uploadId,
       sampleId: input.sampleId,
       fileName: input.fileName,
       fileSize: input.fileSize,
@@ -133,8 +141,12 @@ export async function runCvUploadFlow(
   input: CvUploadInput,
   onProgress: (progress: CvUploadProgress) => void,
 ): Promise<CvUploadResult> {
-  const sampleId = input.sampleId ?? resolveSampleProfileId(input.fileName) ?? 'pdf-en'
-  const isScannedPdf = input.isScannedPdf ?? sampleId === 'pdf-scan'
+  const uploadId = input.uploadId ?? generateCvUploadId()
+  const controlledSampleId =
+    (input.sampleId && isKnownCvSampleId(input.sampleId) ? input.sampleId : null)
+    ?? resolveSampleProfileId(input.fileName)
+  const sampleId = controlledSampleId ?? uploadId
+  const isScannedPdf = input.isScannedPdf ?? controlledSampleId === 'pdf-scan'
 
   try {
     onProgress({ stage: 'reading', progress: 4, message: 'Reading document…' })
@@ -156,7 +168,8 @@ export async function runCvUploadFlow(
     })
 
     const parsed = await parseWithAdapter({
-      sampleId,
+      uploadId,
+      sampleId: controlledSampleId ?? undefined,
       fileName: input.fileName,
       fileSize: loaded.fileSize,
       fileType: loaded.fileType,
@@ -168,16 +181,19 @@ export async function runCvUploadFlow(
     onProgress({ stage: 'mapping', progress: 90, message: 'Normalizing · mapping to profile schema…' })
     await wait(350)
 
-    const payload = applyCvParsePayload(sampleId, input.fileName, parsed)
+    const payload = applyCvParsePayload(controlledSampleId ?? uploadId, input.fileName, parsed)
     if (payload.fields.length === 0) {
       throw new Error('LLM returned no parsed CV fields')
     }
 
     onProgress({ stage: 'done', progress: 100, message: 'Ready for review' })
 
-    const controlledSourceUrl = resolveCvSourceUrl(sampleId, input.fileName, input.filePath)
+    const controlledSourceUrl = controlledSampleId
+      ? resolveCvSourceUrl(controlledSampleId, input.fileName, input.filePath)
+      : ''
+
     let previewUrl = controlledSourceUrl
-    let previewKind: CvPreviewKind = 'html'
+    let previewKind: CvPreviewKind = controlledSourceUrl ? 'html' : 'pdf'
     let previewBlobUrl: string | undefined
 
     if (input.file) {
@@ -185,13 +201,14 @@ export async function runCvUploadFlow(
       if (previewKind === 'pdf' || previewKind === 'image') {
         previewBlobUrl = URL.createObjectURL(input.file)
         previewUrl = previewBlobUrl
-      } else {
+      } else if (controlledSourceUrl) {
         previewUrl = controlledSourceUrl
         previewKind = 'html'
       }
     }
 
     return {
+      uploadId,
       sampleId,
       fileName: input.fileName,
       fileSize: loaded.fileSize,
@@ -214,7 +231,7 @@ export async function runCvUploadFlow(
 function resolveSampleProfileId(fileName: string) {
   const normalized = fileName.toLowerCase()
   if (normalized.includes('noor') || normalized.includes('scan')) return 'pdf-scan'
-  if (normalized.endsWith('.docx')) return 'docx-en'
-  if (normalized.includes('sara') || normalized.endsWith('.pdf')) return 'pdf-en'
+  if (normalized.includes('khalid') || normalized.endsWith('.docx')) return 'docx-en'
+  if (normalized.includes('sara') || normalized.includes('01-sara')) return 'pdf-en'
   return null
 }

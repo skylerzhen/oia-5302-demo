@@ -66,9 +66,13 @@ export const CV_PARSE_PROFILES: Record<string, CvParseProfileData> = {
 export function resolveSampleProfileId(fileName: string): string | null {
   const normalized = fileName.toLowerCase()
   if (normalized.includes('noor') || normalized.includes('scan')) return 'pdf-scan'
-  if (normalized.endsWith('.docx')) return 'docx-en'
-  if (normalized.includes('sara') || normalized.endsWith('.pdf')) return 'pdf-en'
+  if (normalized.includes('khalid') || normalized.endsWith('.docx')) return 'docx-en'
+  if (normalized.includes('sara') || normalized.includes('01-sara')) return 'pdf-en'
   return null
+}
+
+export function isKnownCvSampleId(sampleId: string): boolean {
+  return sampleId in CV_PARSE_PROFILES
 }
 
 export function getCvParseProfile(sampleId: string): CvParseProfileData | undefined {
@@ -103,10 +107,13 @@ export function applyCvParsePayload(
     workHistory?: Array<Omit<WorkExperienceEntry, 'id'> | WorkExperienceEntry>
   },
 ): CvParsePayload {
-  const fields = guardV1Certification(
-    applyScalarParse(emptyProfileFields(), payload.fields ?? []),
-    sampleId,
-    fileName,
+  const fields = syncCurrentRoleFromWorkHistory(
+    guardV1Certification(
+      applyScalarParse(emptyProfileFields(), payload.fields ?? []),
+      sampleId,
+      fileName,
+    ),
+    payload.workHistory ?? [],
   )
   return {
     fields,
@@ -114,4 +121,37 @@ export function applyCvParsePayload(
     languages: payload.languages ?? emptyProfileTagGroup(),
     workHistory: workHistoryWithIds(payload.workHistory ?? []),
   }
+}
+
+/** Map Current role scalars from the most recent work-history entry when parse omitted them. */
+function syncCurrentRoleFromWorkHistory(
+  fields: ProfileField[],
+  workHistory: Array<Omit<WorkExperienceEntry, 'id'> | WorkExperienceEntry>,
+): ProfileField[] {
+  const current = workHistory[0]
+  if (!current) return fields
+
+  const patch: Record<string, { value: string; status: FieldStatus; evidence: string; source: string }> = {}
+  const company = fields.find((f) => f.key === 'companyName')
+  const title = fields.find((f) => f.key === 'positionTitle')
+
+  if (company && !company.value.trim() && current.company.trim()) {
+    patch.companyName = {
+      value: current.company,
+      status: current.status ?? 'parsed',
+      evidence: current.evidence || `${current.title} — ${current.company}`,
+      source: current.source || 'Experience section',
+    }
+  }
+  if (title && !title.value.trim() && current.title.trim()) {
+    patch.positionTitle = {
+      value: current.title,
+      status: current.status ?? 'parsed',
+      evidence: current.evidence || `${current.title} — ${current.company}`,
+      source: current.source || 'Experience section',
+    }
+  }
+
+  if (Object.keys(patch).length === 0) return fields
+  return fields.map((field) => (patch[field.key] ? { ...field, ...patch[field.key] } : field))
 }

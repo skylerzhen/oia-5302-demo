@@ -184,6 +184,7 @@ export const localAi = {
     return response.json() as Promise<LocalAiStatus>
   }),
   parseCv: (payload: {
+    uploadId?: string
     sampleId?: string
     fileName: string
     isScannedPdf?: boolean

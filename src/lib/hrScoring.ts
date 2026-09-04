@@ -163,6 +163,16 @@ export function weightShare(weight: number, weights: PillarWeights): number {
   return Math.round((weight / total) * 100)
 }
 
+export function deriveAiRecommendation(overallScore: number): string {
+  if (overallScore >= 75) {
+    return 'Recommend hire — overall weighted score meets the role threshold.'
+  }
+  if (overallScore >= 60) {
+    return 'Proceed to human review — score is borderline; verify evidence before deciding.'
+  }
+  return 'Recommend reject — overall weighted score is below the role threshold.'
+}
+
 export function pillarContribution(score: number, weight: number, weights: PillarWeights): number {
   const total = weights.cvMatch + weights.assessment + weights.interview
   if (total === 0) return 0

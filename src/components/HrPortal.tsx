@@ -20,6 +20,7 @@ import {
   computeInterviewScoreFromDimensions,
   computeMatchTotalScore,
   computeOverallScore,
+  deriveAiRecommendation,
   loadJdDimensionWeights,
   loadPillarWeights,
   saveJdDimensionWeights,
@@ -183,12 +184,6 @@ export function HrPortal() {
     return () => { active = false }
   }, [assessmentKey, readyForInterviewReview])
 
-  useEffect(() => {
-    if (!readyForInterviewReview) {
-      seedDemoForHr()
-    }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
   const steps = HR_STEPS.map((s) => {
     const locked =
       (s.id === 'H3' && !readyForInterviewReview) ||
@@ -252,7 +247,8 @@ export function HrPortal() {
     <Layout {...layoutProps}>
       {!readyForInterviewReview && (
         <div className="banner-warn">
-          No interview recording yet. Demo data loads automatically — or click <strong>Load demo application</strong>.
+          No interview on this application yet. Complete the candidate flow in C4, or click{' '}
+          <strong>Load demo application</strong> to preload sample data.
         </div>
       )}
 
@@ -308,8 +304,8 @@ export function HrPortal() {
         <section className="stack">
           <header className="section-head">
             <div>
-              <h1>H2 · Shortlist or reject candidate</h1>
-              <p>Review the candidate's match score and decide whether to move forward or disqualify</p>
+              <h1>H2 · Shortlist or decline candidate</h1>
+              <p>Review the candidate's match score and decide whether to move forward</p>
             </div>
           </header>
 
@@ -326,21 +322,21 @@ export function HrPortal() {
               <p className="muted">Advance {selected.candidate.name} to the interview stage</p>
               <textarea placeholder="Reason for shortlist (required)" value={shortlistedReason} onChange={(e) => setShortlistedReason(e.target.value)} />
               <button type="button" className="primary" disabled={!shortlistedReason.trim()} onClick={() => {
-                setPipeline({ shortlisted: true })
+                setPipeline({ shortlisted: true, disqualified: false })
                 syncIntegration('jadarah.pipelineStatus', 'H2', `Shortlisted · ${selected.candidate.name}`)
                 log('Recruiter', 'Shortlisted', `${selected.candidate.name}: ${shortlistedReason}`, 'H2')
                 setStep('H3')
               }}>Shortlist candidate</button>
             </div>
             <div className="card">
-              <h3>Disqualify candidate</h3>
-              <p className="muted">Remove {selected.candidate.name} from the pipeline</p>
-              <textarea placeholder="Reason for disqualify (required)" value={disqualifiedReason} onChange={(e) => setDisqualifiedReason(e.target.value)} />
+              <h3>Do not shortlist</h3>
+              <p className="muted">Decline {selected.candidate.name} at this stage — application stays on record</p>
+              <textarea placeholder="Reason for declining shortlist (required)" value={disqualifiedReason} onChange={(e) => setDisqualifiedReason(e.target.value)} />
               <button type="button" className="danger" disabled={!disqualifiedReason.trim()} onClick={() => {
-                setPipeline({ disqualified: true })
-                syncIntegration('jadarah.pipelineStatus', 'H2', `Disqualified · ${selected.candidate.name}`)
-                log('Recruiter', 'Disqualified', `${selected.candidate.name}: ${disqualifiedReason}`, 'H2')
-              }}>{pipeline.disqualified ? 'Disqualified · reason recorded' : 'Disqualify candidate'}</button>
+                setPipeline({ disqualified: true, shortlisted: false })
+                syncIntegration('jadarah.pipelineStatus', 'H2', `Not shortlisted · ${selected.candidate.name}`)
+                log('Recruiter', 'Not shortlisted', `${selected.candidate.name}: ${disqualifiedReason}`, 'H2')
+              }}>{pipeline.disqualified ? 'Not shortlisted · reason recorded' : 'Decline at shortlist stage'}</button>
             </div>
           </div>
         </section>
@@ -405,7 +401,10 @@ export function HrPortal() {
           <div className="card stack">
             <div className="ai-rec-card">
             <span className="ai-label">AI recommendation</span>
-            <strong>{interviewReport?.recommendation ?? (assessmentLoading ? 'Generating LLM recommendation…' : 'Complete C4 interview to generate recommendation')}</strong>
+            <strong>{deriveAiRecommendation(overallWeightedScore)}</strong>
+            {interviewReport?.recommendation && (
+              <p className="muted tiny">LLM narrative (supplementary): {interviewReport.recommendation}</p>
+            )}
             <p>
               Overall weighted score {overallWeightedScore}% — CV {cvScore}% · Assessment {assessmentScore}%
               {interviewPillarScore != null && <> · Interview {interviewPillarScore}%</>} · evidence-linked review.

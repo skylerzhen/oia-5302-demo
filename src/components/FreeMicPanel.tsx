@@ -103,7 +103,7 @@ export function FreeMicPanel({
       <div className="free-mic-head">
         <span className={`free-mic-badge ${active && supported ? 'live' : ''}`}>
           <Mic size={14} aria-hidden />
-          {active && supported ? 'Duplex · 边听边回' : 'Duplex off'}
+          {active && supported ? 'Duplex · listen & respond' : 'Duplex off'}
         </span>
         {following && (
           <span className="free-mic-follow muted tiny">AI following your answer…</span>
@@ -122,7 +122,7 @@ export function FreeMicPanel({
 
       {active && supported && (
         <div className="free-mic-caption" aria-live="polite">
-          <span className="muted tiny">You · 实时字幕</span>
+          <span className="muted tiny">You · live caption</span>
           <p>{liveCaption || (llmBusy ? 'Generating follow-up…' : 'Listening…')}</p>
         </div>
       )}
