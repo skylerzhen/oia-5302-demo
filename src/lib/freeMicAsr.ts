@@ -30,10 +30,13 @@ export interface FreeMicSessionOptions {
   lang?: string
   silenceMs?: number
   minChars?: number
+  minWords?: number
   partialStableMs?: number
   partialMinChars?: number
   /** Min caption length before barge-in callback (avoids avatar bleed-through). */
   bargeInMinChars?: number
+  /** Return false to drop an utterance (e.g. avatar still speaking / cooldown). */
+  shouldAcceptUtterance?: (text: string) => boolean
   onLiveCaption: (text: string) => void
   onSpeechStart?: (caption: string) => void
   onPartialStable?: (text: string) => void
@@ -52,11 +55,12 @@ export function startFreeMicSession(options: FreeMicSessionOptions): FreeMicSess
     throw new Error('Browser speech recognition is not supported in this browser.')
   }
 
-  const silenceMs = options.silenceMs ?? 1000
-  const minChars = options.minChars ?? 6
-  const partialStableMs = options.partialStableMs ?? 420
-  const partialMinChars = options.partialMinChars ?? 14
-  const bargeInMinChars = options.bargeInMinChars ?? 6
+  const silenceMs = options.silenceMs ?? 2000
+  const minChars = options.minChars ?? 18
+  const minWords = options.minWords ?? 3
+  const partialStableMs = options.partialStableMs ?? 520
+  const partialMinChars = options.partialMinChars ?? 22
+  const bargeInMinChars = options.bargeInMinChars ?? 10
   let stopped = false
   let speechStarted = false
   let utteranceFinal = ''
@@ -118,6 +122,8 @@ export function startFreeMicSession(options: FreeMicSessionOptions): FreeMicSess
       silenceTimer = null
       const text = utteranceFinal.trim()
       if (text.length < minChars) return
+      if (text.split(/\s+/).filter(Boolean).length < minWords) return
+      if (options.shouldAcceptUtterance && !options.shouldAcceptUtterance(text)) return
       if (Date.now() - lastActivityAt < silenceMs) return
       utteranceFinal = ''
       interim = ''

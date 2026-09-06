@@ -9,6 +9,7 @@ import type {
   ProfileField,
   ProfileTagGroup,
   InterviewConfig,
+  HrInjectedQuestion,
   UserRole,
   WorkExperienceEntry,
 } from '../types'
@@ -40,6 +41,8 @@ export interface DemoContextValue {
   setInterviewTurns: React.Dispatch<React.SetStateAction<InterviewTurn[]>>
   interviewConfig: InterviewConfig
   setInterviewConfig: React.Dispatch<React.SetStateAction<InterviewConfig>>
+  hrInjectedQuestion: HrInjectedQuestion | null
+  setHrInjectedQuestion: (q: HrInjectedQuestion | null) => void
   assessmentScore: number
   setAssessmentScore: (n: number) => void
   shortlistedReason: string
@@ -53,6 +56,7 @@ export interface DemoContextValue {
   hrStep: HrStepId
   setHrStep: (step: HrStepId) => void
   logout: () => void
+  returnToEntry: () => void
   seedDemoForHr: () => void
   seedDemoForCandidateC4: () => void
 }

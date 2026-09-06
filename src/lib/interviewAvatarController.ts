@@ -8,7 +8,7 @@ import { speakInterviewLine } from './voiceSpeak'
 export type InterviewAvatarUiPhase = 'idle' | 'connecting' | 'thinking' | 'speaking'
 
 export interface SpeakTurnOptions {
-  avatarMode: '2d' | 'heygen' | 'liveavatar'
+  avatarMode: 'heygen' | 'liveavatar'
   onViseme?: (viseme: Viseme) => void
   /** Default true — set false when transcript row was already appended. */
   addToTranscript?: boolean
@@ -49,8 +49,8 @@ export class InterviewAvatarController {
 
   /** LiveAvatar: wait for video + session before the first line (connecting phase). */
   async connectLiveAvatar(
-    avatarMode: '2d' | 'heygen' | 'liveavatar',
-    timeoutMs = 20_000,
+    avatarMode: 'heygen' | 'liveavatar',
+    timeoutMs = 60_000,
   ): Promise<boolean> {
     if (avatarMode !== 'liveavatar') return true
     this.setPhase('connecting')
@@ -132,7 +132,9 @@ export function interviewAvatarStatusMessage(
 ): string {
   switch (phase) {
     case 'connecting':
-      return liveAvatarMode ? 'Connecting LiveAvatar video…' : 'Preparing interview…'
+      return liveAvatarMode
+        ? '正在连接 LiveAvatar 视频（首次可能需要 30–60 秒，请勿关闭页面）…'
+        : 'Preparing interview…'
     case 'thinking':
       return 'Generating follow-up…'
     default:

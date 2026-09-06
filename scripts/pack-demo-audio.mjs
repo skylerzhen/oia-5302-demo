@@ -16,15 +16,20 @@ async function main() {
   fs.mkdirSync(OUT_DIR, { recursive: true })
   const outPath = path.join(OUT_DIR, 'opening-en.mp3')
 
+  if (fs.existsSync(outPath) && !process.env.DEMO_AUDIO_FORCE?.trim()) {
+    console.log(`✓ ${outPath} (unchanged — set DEMO_AUDIO_FORCE=1 to regenerate)`)
+    return
+  }
+
   if (openAiTtsConfigured()) {
-    const voice = process.env.OPENAI_TTS_VOICE?.trim() || 'shimmer'
+    const voice = process.env.OPENAI_TTS_VOICE?.trim() || 'onyx'
     const { audioBuffer } = await synthesizeOpenAiTts(OPENING_TEXT)
     fs.writeFileSync(outPath, audioBuffer)
     console.log(`✓ ${outPath} (${Math.round(audioBuffer.length / 1024)} KB, OpenAI ${voice})`)
     return
   }
 
-  const voice = process.env.EDGE_TTS_VOICE_EN?.trim() || 'en-US-AvaMultilingualNeural'
+  const voice = process.env.EDGE_TTS_VOICE_EN?.trim() || 'en-US-AndrewMultilingualNeural'
   const { audioBuffer } = await synthesizeEdgeTts(OPENING_TEXT, voice)
   fs.writeFileSync(outPath, audioBuffer)
   console.log(`✓ ${outPath} (${Math.round(audioBuffer.length / 1024)} KB, Edge ${voice})`)

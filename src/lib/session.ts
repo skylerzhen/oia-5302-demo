@@ -4,6 +4,7 @@ import type {
   AuditEntry,
   CandidateStepId,
   HrStepId,
+  HrInjectedQuestion,
   IntegrationSyncEvent,
   InterviewConfig,
   InterviewTurn,
@@ -14,7 +15,7 @@ import type {
   WorkExperienceEntry,
 } from '../types'
 
-const STORAGE_KEY = 'oia-5302-demo-session'
+export const DEMO_SESSION_STORAGE_KEY = 'oia-5302-demo-session'
 
 export interface DemoSession {
   role: UserRole | null
@@ -30,6 +31,7 @@ export interface DemoSession {
   profileWorkHistory: WorkExperienceEntry[]
   interviewTurns: InterviewTurn[]
   interviewConfig: InterviewConfig
+  hrInjectedQuestion: HrInjectedQuestion | null
   assessmentScore: number
   shortlistedReason: string
   disqualifiedReason: string
@@ -62,6 +64,7 @@ export function defaultSession(): DemoSession {
     profileWorkHistory: [],
     interviewTurns: [],
     interviewConfig: defaultInterviewConfig(),
+    hrInjectedQuestion: null,
     assessmentScore: 0,
     shortlistedReason: '',
     disqualifiedReason: '',
@@ -69,33 +72,50 @@ export function defaultSession(): DemoSession {
   }
 }
 
+function readStoredSessionRaw(): string | null {
+  let raw = localStorage.getItem(DEMO_SESSION_STORAGE_KEY)
+  if (raw) return raw
+  const legacy = sessionStorage.getItem(DEMO_SESSION_STORAGE_KEY)
+  if (!legacy) return null
+  localStorage.setItem(DEMO_SESSION_STORAGE_KEY, legacy)
+  sessionStorage.removeItem(DEMO_SESSION_STORAGE_KEY)
+  return legacy
+}
+
+export function parseStoredSession(raw: string): DemoSession {
+  const parsed = JSON.parse(raw) as Partial<DemoSession>
+  return {
+    ...defaultSession(),
+    ...parsed,
+    role: null,
+    offline: false,
+    pipeline: { ...defaultPipeline, ...(parsed.pipeline ?? {}) },
+    integrationSyncs: parsed.integrationSyncs ?? [],
+    fields: mergeProfileFields(Array.isArray(parsed.fields) ? parsed.fields : []),
+    profileSkills: parsed.profileSkills ?? emptyProfileTagGroup(),
+    profileLanguages: parsed.profileLanguages ?? emptyProfileTagGroup(),
+    profileWorkHistory: Array.isArray(parsed.profileWorkHistory) ? parsed.profileWorkHistory : [],
+    interviewTurns: Array.isArray(parsed.interviewTurns) ? parsed.interviewTurns : [],
+    interviewConfig: normalizeInterviewConfig(parsed.interviewConfig ?? loadInterviewConfig()),
+    hrInjectedQuestion: parsed.hrInjectedQuestion?.textEn
+      ? { textEn: String(parsed.hrInjectedQuestion.textEn), queuedAt: parsed.hrInjectedQuestion.queuedAt ?? new Date().toISOString() }
+      : null,
+  }
+}
+
 export function loadSession(): DemoSession {
   try {
-    const raw = sessionStorage.getItem(STORAGE_KEY)
+    const raw = readStoredSessionRaw()
     if (!raw) return defaultSession()
-    const parsed = JSON.parse(raw) as Partial<DemoSession>
-    return {
-      ...defaultSession(),
-      ...parsed,
-      // Always show the public landing page on reload / new visit.
-      role: null,
-      offline: false,
-      pipeline: { ...defaultPipeline, ...(parsed.pipeline ?? {}) },
-      integrationSyncs: parsed.integrationSyncs ?? [],
-      fields: mergeProfileFields(Array.isArray(parsed.fields) ? parsed.fields : []),
-      profileSkills: parsed.profileSkills ?? emptyProfileTagGroup(),
-      profileLanguages: parsed.profileLanguages ?? emptyProfileTagGroup(),
-      profileWorkHistory: Array.isArray(parsed.profileWorkHistory) ? parsed.profileWorkHistory : [],
-      interviewConfig: normalizeInterviewConfig(parsed.interviewConfig ?? loadInterviewConfig()),
-    }
+    return parseStoredSession(raw)
   } catch {
     return defaultSession()
   }
 }
 
 export function saveSession(session: DemoSession) {
-  sessionStorage.setItem(
-    STORAGE_KEY,
+  localStorage.setItem(
+    DEMO_SESSION_STORAGE_KEY,
     JSON.stringify({
       ...session,
       role: null,
@@ -105,5 +125,6 @@ export function saveSession(session: DemoSession) {
 }
 
 export function clearSession() {
-  sessionStorage.removeItem(STORAGE_KEY)
+  localStorage.removeItem(DEMO_SESSION_STORAGE_KEY)
+  sessionStorage.removeItem(DEMO_SESSION_STORAGE_KEY)
 }

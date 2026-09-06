@@ -27,7 +27,7 @@ export function InterviewReviewPanel({ turns }: InterviewReviewPanelProps) {
   const [playing, setPlaying] = useState(false)
   const [sessionActive, setSessionActive] = useState(false)
   const [playbackError, setPlaybackError] = useState('')
-  const [avatarMode, setAvatarMode] = useState<'2d' | 'heygen' | 'liveavatar'>('2d')
+  const [avatarMode, setAvatarMode] = useState<'heygen' | 'liveavatar'>('liveavatar')
   const avatar = useInterviewAvatar(avatarMode)
   const playbackAbortRef = useRef<AbortController | null>(null)
   const playbackGenRef = useRef(0)
@@ -35,6 +35,7 @@ export function InterviewReviewPanel({ turns }: InterviewReviewPanelProps) {
   useEffect(() => {
     preloadSpeechVoices()
     warmInterviewSpeech()
+    setLiveAvatarEnabled(true)
     localAi.status()
       .then((status) => {
         const provider = status.speech?.avatarProvider
@@ -44,12 +45,14 @@ export function InterviewReviewPanel({ turns }: InterviewReviewPanelProps) {
           setHeyGenAvatarEnabled(false)
         } else {
           const heygen = provider === 'heygen' || status.avatar?.configured === true
-          setAvatarMode(heygen ? 'heygen' : '2d')
+          setAvatarMode(heygen ? 'heygen' : 'liveavatar')
           setHeyGenAvatarEnabled(heygen)
-          setLiveAvatarEnabled(false)
+          setLiveAvatarEnabled(!heygen)
         }
       })
-      .catch(() => setAvatarMode('2d'))
+      .catch(() => {
+        setLiveAvatarEnabled(true)
+      })
   }, [])
 
   useEffect(() => {

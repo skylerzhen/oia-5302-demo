@@ -183,6 +183,10 @@ export const localAi = {
     if (!response.ok) throw new Error(`Local AI status failed: ${response.status}`)
     return response.json() as Promise<LocalAiStatus>
   }),
+  liveavatarStatus: () => window.fetch(apiUrl('/api/liveavatar/status')).then((response) => {
+    if (!response.ok) throw new Error(`LiveAvatar status failed: ${response.status}`)
+    return response.json() as Promise<{ configured: boolean; mode?: string }>
+  }),
   parseCv: (payload: {
     uploadId?: string
     sampleId?: string

@@ -2,39 +2,11 @@ import { randomUUID } from 'node:crypto'
 
 const SAMPLE_RATE = 24_000
 const BYTES_PER_SAMPLE = 2
-/** Stream PCM at realtime — sending 1s chunks every 40ms breaks LiveAvatar lip-sync. */
-const CHUNK_DURATION_MS = 100
+/** LiveAvatar docs: ~1s PCM chunks, paced at realtime (not 40ms burst). */
+const CHUNK_DURATION_MS = 1000
 const CHUNK_BYTES = Math.floor(SAMPLE_RATE * BYTES_PER_SAMPLE * (CHUNK_DURATION_MS / 1000))
 
 const sessions = new Map()
-
-/** LiveAvatar LITE idle-closes the control WebSocket without periodic keep-alive (~1–2 min). */
-const KEEP_ALIVE_MS = 30_000
-
-function stopKeepAlive(entry) {
-  if (entry?.keepAliveTimer) {
-    clearInterval(entry.keepAliveTimer)
-    entry.keepAliveTimer = null
-  }
-}
-
-function startSessionKeepAlive(ws) {
-  const timer = setInterval(() => {
-    if (ws.readyState !== WebSocket.OPEN) {
-      clearInterval(timer)
-      return
-    }
-    try {
-      ws.send(JSON.stringify({
-        type: 'session.keep_alive',
-        event_id: randomUUID(),
-      }))
-    } catch {
-      clearInterval(timer)
-    }
-  }, KEEP_ALIVE_MS)
-  return timer
-}
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -100,7 +72,9 @@ async function speakPcmOnSocket(ws, pcmBuffer, signal) {
     throw new DOMException('Speech interrupted', 'AbortError')
   }
 
-  for (const chunk of chunkPcm(pcmBuffer)) {
+  const chunks = chunkPcm(pcmBuffer)
+  for (let index = 0; index < chunks.length; index += 1) {
+    const chunk = chunks[index]
     if (signal?.aborted) throw new DOMException('Speech interrupted', 'AbortError')
     ws.send(JSON.stringify({
       type: 'agent.speak',
@@ -110,7 +84,10 @@ async function speakPcmOnSocket(ws, pcmBuffer, signal) {
       20,
       Math.round((chunk.length / (SAMPLE_RATE * BYTES_PER_SAMPLE)) * 1000),
     )
-    await sleep(chunkDurationMs)
+    // First chunk goes out immediately; later chunks follow realtime pacing.
+    if (index > 0) {
+      await sleep(chunkDurationMs)
+    }
   }
 
   const speakEnded = new Promise((resolve, reject) => {
@@ -157,15 +134,8 @@ export async function openLiveAvatarSession(startResult) {
   const ws = new WebSocket(wsUrl)
   await waitForWsConnected(ws)
 
-  const keepAliveTimer = startSessionKeepAlive(ws)
-  ws.addEventListener('close', () => {
-    const entry = sessions.get(sessionId)
-    if (entry) stopKeepAlive(entry)
-  })
-
   sessions.set(sessionId, {
     ws,
-    keepAliveTimer,
     ...startResult,
     createdAt: Date.now(),
   })
@@ -187,7 +157,6 @@ export async function closeLiveAvatarSession(sessionId) {
   const entry = sessions.get(sessionId)
   if (!entry) return
   sessions.delete(sessionId)
-  stopKeepAlive(entry)
   try {
     entry.ws.close()
   } catch {

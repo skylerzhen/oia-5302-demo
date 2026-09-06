@@ -1,5 +1,29 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
-import { CheckCircle2, ChevronUp, FileUp, Play, Upload } from 'lucide-react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react'
+import {
+  ArrowRight,
+  BadgeCheck,
+  BarChart3,
+  CheckCircle2,
+  ChevronUp,
+  ClipboardList,
+  FileCheck,
+  FileText,
+  FileUp,
+  LayoutList,
+  LogOut,
+  MessageSquare,
+  Play,
+  PlayCircle,
+  RefreshCw,
+  RotateCcw,
+  Scale,
+  Shield,
+  Target,
+  Upload,
+  UserCheck,
+  Video,
+  type LucideIcon,
+} from 'lucide-react'
 import { useDemo } from '../context/DemoContext'
 import { AvatarPanel } from './AvatarPanel'
 import { FreeMicPanel } from './FreeMicPanel'
@@ -8,7 +32,8 @@ import { SourceDocumentModal } from './SourceDocumentModal'
 import { CvReviewPanel } from './CvReviewPanel'
 import type { CvEvidenceLocateRequest, CvPreviewKind } from './CvSourcePreview'
 import { CvProfilePanel } from './CvProfilePanel'
-import { Layout } from './Layout'
+import { IntegrationStatusPanel } from './IntegrationStatusPanel'
+import { NetworkStatus } from './NetworkStatus'
 import { CV_UPLOAD_SAMPLES, CV_V2_DIFF } from '../data/candidates'
 import { resolveSampleProfileId } from '../data/cvParseProfiles'
 import { FINANCE_JOB } from '../data/job'
@@ -22,9 +47,18 @@ import {
   shouldForceInterviewClosing as configShouldForceClosing,
   toInterviewConfigPayload,
 } from '../lib/interviewConfig'
-import { localAi, type FollowUpResult } from '../lib/localAi'
+import { localAi, type FollowUpResult, type AssessmentResult } from '../lib/localAi'
 import { preloadSpeechVoices, setHeyGenAvatarEnabled, setLiveAvatarEnabled, warmInterviewSpeech } from '../lib/voiceSpeak'
-import { installLiveAvatarLifecycleGuards, stopLiveAvatarSession } from '../lib/liveavatarPlayer'
+import {
+  installLiveAvatarLifecycleGuards,
+  liveAvatarVideoHealthy,
+  stopLiveAvatarSession,
+  getLiveAvatarLastError,
+  waitForLiveAvatarVideoReady,
+  refreshLiveAvatarSession,
+  resetLiveAvatarReconnectState,
+} from '../lib/liveavatarPlayer'
+import { formatLiveAvatarError } from '../lib/liveavatarErrors'
 import { unlockAudioPlayback } from '../lib/audioUnlock'
 import {
   prefetchMatchesUtterance,
@@ -45,12 +79,188 @@ import {
   DEFAULT_INTERVIEW_CLOSING,
   getInterviewUiPhase,
 } from '../lib/matching'
+import {
+  applyJdWeights,
+  computeInterviewScoreFromDimensions,
+  computeMatchTotalScore,
+  computeOverallScore,
+  dimensionAchievementPct,
+  pillarContribution,
+  weightShare,
+} from '../lib/hrScoring'
+import { useScoringWeights } from '../hooks/useScoringWeights'
+import { buildAssessmentKey, cachedLlmAssessment } from '../lib/llmRequestCache'
 import { getPrimaryMatch, loadLlmMatches } from '../lib/llmMatching'
 import { profileFieldsKey } from '../lib/profileFieldsKey'
 import type { CandidateMatchWithTips } from '../lib/matching'
 import { scrollPageToTop } from '../lib/scrollPageToTop'
 import { getContentScrollContainer } from '../lib/smoothScroll'
-import type { CandidateStepId, FieldStatus, InterviewQuestion, InterviewTurn, ProfileTagGroup, WorkExperienceEntry } from '../types'
+import type { CandidateStepId, FieldStatus, IntegrationSyncEvent, InterviewQuestion, InterviewTurn, ProfileTagGroup, UserRole, WorkExperienceEntry } from '../types'
+
+const CANDIDATE_NAV_ICONS: Record<string, LucideIcon> = {
+  C1: FileUp,
+  C2: UserCheck,
+  C3: ClipboardList,
+  C4: Video,
+  C5: BarChart3,
+  C6: BadgeCheck,
+}
+
+const HR_NAV_ICONS: Record<string, LucideIcon> = {
+  H1: LayoutList,
+  H2: UserCheck,
+  H3: PlayCircle,
+  H4: Scale,
+  H5: FileText,
+}
+
+export interface StepItem {
+  id: string
+  label: string
+  hint?: string
+  locked?: boolean
+  lockNote?: string
+  complete?: boolean
+  order: number
+}
+
+interface LayoutProps {
+  role: UserRole
+  offline: boolean
+  onToggleOffline: () => void
+  activeStep: string
+  steps: readonly StepItem[]
+  onStepChange: (step: string) => void
+  onLogout: () => void
+  integrationSyncs: IntegrationSyncEvent[]
+  demoShortcut?: ReactNode
+  children: ReactNode
+}
+
+export function Layout({
+  role,
+  offline,
+  onToggleOffline,
+  activeStep,
+  steps,
+  onStepChange,
+  onLogout,
+  integrationSyncs,
+  demoShortcut,
+  children,
+}: LayoutProps) {
+  const isCandidate = role === 'candidate'
+  const roleLabel = isCandidate ? 'Candidate portal' : 'HR portal'
+  const navIcons = isCandidate ? CANDIDATE_NAV_ICONS : HR_NAV_ICONS
+  const contentRef = useRef<HTMLElement>(null)
+  const activeStepMeta = useMemo(
+    () => steps.find((step) => step.id === activeStep),
+    [activeStep, steps],
+  )
+  const activeStepLabel = activeStepMeta?.label ?? activeStep
+  const completedCount = steps.filter((step) => step.complete).length
+
+  useEffect(() => {
+    const content = contentRef.current
+    if (!content) return
+
+    const scrollToTop = () => {
+      content.scrollTop = 0
+      window.scrollTo(0, 0)
+    }
+
+    scrollToTop()
+    const raf = requestAnimationFrame(scrollToTop)
+    const timer = window.setTimeout(scrollToTop, 0)
+    return () => {
+      cancelAnimationFrame(raf)
+      window.clearTimeout(timer)
+    }
+  }, [activeStep])
+
+  return (
+    <div className="app-shell" dir="ltr">
+      <div className="main-grid">
+        <aside className="sidebar">
+          <div className="sidebar-brand">
+            <Shield size={20} aria-hidden />
+            <div className="sidebar-brand-copy">
+              <strong>OIA Recruitment</strong>
+              <span className="sidebar-brand-meta">RFQ 5302 prototype</span>
+            </div>
+          </div>
+
+          <div className="sidebar-nav-head">
+            <h3>{isCandidate ? 'Application progress' : 'Recruitment workspace'}</h3>
+            <span className="sidebar-nav-progress">
+              {completedCount}/{steps.length} complete
+            </span>
+          </div>
+
+          <nav className="sidebar-nav" aria-label={isCandidate ? 'Application steps' : 'Recruitment steps'}>
+            {steps.map((step) => {
+              const Icon = navIcons[step.id]
+              const isActive = activeStep === step.id
+              const showComplete = step.complete && !isActive
+
+              return (
+                <button
+                  key={step.id}
+                  type="button"
+                  className={`nav-item ${isActive ? 'active' : ''} ${step.locked ? 'locked' : ''} ${showComplete ? 'complete' : ''}`}
+                  onClick={() => !step.locked && onStepChange(step.id)}
+                  disabled={step.locked}
+                  aria-current={isActive ? 'step' : undefined}
+                >
+                  <span className="nav-item-marker" aria-hidden>
+                    {showComplete ? 'Done' : step.order}
+                  </span>
+                  <div className="nav-item-body">
+                    <span className="nav-item-title-row">
+                      {Icon && <Icon size={15} className="nav-item-icon" aria-hidden />}
+                      <strong>{step.label}</strong>
+                    </span>
+                    {step.locked && step.lockNote ? (
+                      <small className="lock-note">{step.lockNote}</small>
+                    ) : step.hint ? (
+                      <small className="nav-item-hint">{step.hint}</small>
+                    ) : null}
+                  </div>
+                </button>
+              )
+            })}
+          </nav>
+
+          {demoShortcut && <div className="demo-shortcut-panel">{demoShortcut}</div>}
+
+          <IntegrationStatusPanel events={integrationSyncs} />
+        </aside>
+
+        <div className="content-column">
+          <header className="topbar">
+            <div className="topbar-title">
+              <span className="topbar-role">{roleLabel}</span>
+              <span className="topbar-step">{activeStepLabel}</span>
+              {activeStepMeta && (
+                <span className="topbar-step-meta">
+                  Step {activeStepMeta.order} of {steps.length}
+                </span>
+              )}
+            </div>
+            <div className="topbar-actions">
+              <NetworkStatus offline={offline} onToggle={onToggleOffline} />
+              <button type="button" className="ghost-btn" onClick={onLogout}>
+                <LogOut size={16} /> Exit portal
+              </button>
+            </div>
+          </header>
+
+          <main ref={contentRef} className="content">{children}</main>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 const UPLOAD_STAGE_TRACK = [
   { id: 'reading', label: 'Read' },
@@ -102,6 +312,7 @@ export function CandidatePortal() {
     profileWorkHistory, setProfileWorkHistory,
     interviewTurns, setInterviewTurns,
     interviewConfig,
+    hrInjectedQuestion, setHrInjectedQuestion,
     assessmentScore, setAssessmentScore,
     disqualifiedReason, finalReason,
     candidateStep: step, setCandidateStep: setStep, logout,
@@ -114,11 +325,12 @@ export function CandidatePortal() {
   const [examBreakdown, setExamBreakdown] = useState<{ id: string; correct: boolean }[]>([])
   const [examStartedAt, setExamStartedAt] = useState<number | null>(null)
   const [examDurationSec, setExamDurationSec] = useState(0)
-  const [interviewStarted, setInterviewStarted] = useState(() => interviewTurns.length > 0)
+  const [interviewStarted, setInterviewStarted] = useState(false)
+  const [liveAvatarReady, setLiveAvatarReady] = useState(false)
   const [interviewClosingReady, setInterviewClosingReady] = useState(false)
   const [candidateAnswerEn, setCandidateAnswerEn] = useState('')
   const [supportivePrompt, setSupportivePrompt] = useState('')
-  const [avatarMode, setAvatarMode] = useState<'2d' | 'heygen' | 'liveavatar'>('2d')
+  const [avatarMode, setAvatarMode] = useState<'heygen' | 'liveavatar'>('liveavatar')
   const avatar = useInterviewAvatar(avatarMode)
   const [llmError, setLlmError] = useState('')
   const [matchLoading, setMatchLoading] = useState(false)
@@ -136,7 +348,10 @@ export function CandidatePortal() {
   const previewBlobRef = useRef<string | null>(null)
   const parsePreviewKeyRef = useRef<string | null>(null)
   const interviewTurnsRef = useRef(interviewTurns)
+  const hrInjectedQuestionRef = useRef(hrInjectedQuestion)
   const prefetchRef = useRef<FollowUpPrefetch | null>(null)
+  const lastAnswerSubmitRef = useRef({ at: 0, text: '' })
+  const c4ResumeKeyRef = useRef('')
   const [lastUploadInput, setLastUploadInput] = useState<{
     sampleId: string
     label: string
@@ -181,6 +396,52 @@ export function CandidatePortal() {
     avatar.stop()
     setInterviewDuplexMode(false)
     prefetchRef.current = null
+  }
+
+  async function reconnectLiveAvatarSession(options?: { forceRefresh?: boolean }): Promise<boolean> {
+    if (avatarMode !== 'liveavatar') {
+      setLiveAvatarReady(true)
+      return true
+    }
+    setLlmError('')
+    resetLiveAvatarReconnectState()
+
+    let healthy = false
+    if (options?.forceRefresh) {
+      healthy = await refreshLiveAvatarSession()
+    } else {
+      healthy = await waitForLiveAvatarVideoReady(90_000)
+      if (!healthy) healthy = await refreshLiveAvatarSession()
+    }
+
+    if (healthy) {
+      healthy = await waitForLiveAvatarVideoReady(30_000) || liveAvatarVideoHealthy()
+    }
+
+    setLiveAvatarReady(healthy)
+    if (!healthy) {
+      setLlmError(formatLiveAvatarError(
+        getLiveAvatarLastError() ?? 'LiveAvatar video reconnect failed — try again or restart the interview.',
+      ))
+    }
+    return healthy
+  }
+
+  function restartInterview() {
+    stopInterviewSpeech()
+    void stopLiveAvatarSession()
+    c4ResumeKeyRef.current = ''
+    setInterviewTurns([])
+    setHrInjectedQuestion(null)
+    setInterviewStarted(false)
+    setLiveAvatarReady(false)
+    setInterviewClosingReady(false)
+    setCandidateAnswerEn('')
+    setSupportivePrompt('')
+    setLlmError('')
+    avatar.setCaption('')
+    setPipeline({ interviewCompleted: false })
+    log('Candidate', 'Interview restarted', 'Transcript cleared — ready for a fresh C4 session', 'C4')
   }
 
   function appendAvatarTurn(turn: InterviewTurn, add: boolean) {
@@ -228,6 +489,10 @@ export function CandidatePortal() {
   }, [interviewTurns])
 
   useEffect(() => {
+    hrInjectedQuestionRef.current = hrInjectedQuestion
+  }, [hrInjectedQuestion])
+
+  useEffect(() => {
     if (step === 'C3' && !examSubmitted && !examStartedAt) setExamStartedAt(Date.now())
   }, [examStartedAt, examSubmitted, step])
 
@@ -249,8 +514,30 @@ export function CandidatePortal() {
 
   useEffect(() => {
     if (step !== 'C4' || pipeline.interviewCompleted) return
-    setInterviewStarted(interviewTurns.length > 0)
-  }, [step, pipeline.interviewCompleted, interviewTurns.length])
+    setInterviewStarted(false)
+    setLiveAvatarReady(false)
+    c4ResumeKeyRef.current = ''
+  }, [step, pipeline.interviewCompleted])
+
+  useEffect(() => {
+    if (step !== 'C4' || avatarMode !== 'liveavatar' || !interviewStarted) return
+    let misses = 0
+    const timer = window.setInterval(() => {
+      if (liveAvatarVideoHealthy()) {
+        misses = 0
+        setLiveAvatarReady(true)
+        return
+      }
+      misses += 1
+      if (misses >= 3) setLiveAvatarReady(false)
+    }, 2000)
+    return () => window.clearInterval(timer)
+  }, [step, avatarMode, interviewStarted])
+
+  useEffect(() => {
+    if (step === 'C4') return
+    if (avatarMode === 'liveavatar') void stopLiveAvatarSession()
+  }, [step, avatarMode])
 
   useEffect(() => {
     if (!examSubmitted) return
@@ -268,22 +555,18 @@ export function CandidatePortal() {
   }, [avatarMode])
 
   useEffect(() => {
-    if (step !== 'C4' || avatarMode !== 'liveavatar') {
-      if (avatarMode === 'liveavatar') void stopLiveAvatarSession()
-      return
-    }
-    return () => {
-      void stopLiveAvatarSession()
-    }
-  }, [step, avatarMode])
-
-  useEffect(() => {
     if (!pipeline.interviewCompleted || avatarMode !== 'liveavatar') return
     void stopLiveAvatarSession()
   }, [pipeline.interviewCompleted, avatarMode])
 
   useEffect(() => {
+    if (step !== 'C4' || avatarMode !== 'liveavatar' || interviewStarted) return
+    void localAi.liveavatarStatus().catch(() => undefined)
+  }, [step, avatarMode, interviewStarted])
+
+  useEffect(() => {
     preloadSpeechVoices()
+    setLiveAvatarEnabled(true)
     localAi.status()
       .then((status) => {
         const provider = status.speech?.avatarProvider
@@ -293,12 +576,14 @@ export function CandidatePortal() {
           setHeyGenAvatarEnabled(false)
         } else {
           const heygen = provider === 'heygen' || status.avatar?.configured === true
-          setAvatarMode(heygen ? 'heygen' : '2d')
+          setAvatarMode(heygen ? 'heygen' : 'liveavatar')
           setHeyGenAvatarEnabled(heygen)
-          setLiveAvatarEnabled(false)
+          setLiveAvatarEnabled(!heygen)
         }
       })
-      .catch(() => undefined)
+      .catch(() => {
+        setLiveAvatarEnabled(true)
+      })
   }, [])
 
   useLayoutEffect(() => {
@@ -527,9 +812,21 @@ export function CandidatePortal() {
 
   async function handleCandidateAnswerSubmit(ans: string) {
     const trimmed = ans.trim()
-    if (!trimmed || avatar.isThinking) return
+    const wordCount = trimmed.split(/\s+/).filter(Boolean).length
+    if (!trimmed || wordCount < 3 || trimmed.length < 12) return
+    if (avatar.isThinking || avatar.isSpeaking) return
     if (interviewClosingReady || pipeline.interviewCompleted) return
     if (countCandidateAnswers(interviewTurns) >= interviewConfig.maxAnswers) return
+
+    const now = Date.now()
+    if (
+      now - lastAnswerSubmitRef.current.at < 5_000
+      && trimmed.toLowerCase() === lastAnswerSubmitRef.current.text.toLowerCase()
+    ) {
+      return
+    }
+    lastAnswerSubmitRef.current = { at: now, text: trimmed }
+
     unlockAudioPlayback()
     setLlmError('')
 
@@ -561,6 +858,17 @@ export function CandidatePortal() {
 
         if (configShouldForceClosing(interviewConfig, answerCount)) {
           forceClosing = true
+          return
+        }
+
+        const injected = hrInjectedQuestionRef.current
+        if (injected?.textEn?.trim()) {
+          fixedQuestion = {
+            id: `hr-live-${Date.now()}`,
+            textEn: injected.textEn.trim(),
+            source: 'custom',
+          }
+          setHrInjectedQuestion(null)
           return
         }
 
@@ -732,7 +1040,7 @@ export function CandidatePortal() {
     }))
   }
 
-  const steps = CANDIDATE_STEPS.map((s) => {
+  const steps = CANDIDATE_STEPS.map((s, index) => {
     const locked =
       (s.id === 'C2' && !pipeline.profileSubmitted) ||
       (s.id === 'C3' && !pipeline.diffAccepted) ||
@@ -740,16 +1048,30 @@ export function CandidatePortal() {
       (s.id === 'C5' && !pipeline.interviewCompleted) ||
       (s.id === 'C6' && !pipeline.interviewCompleted)
     const lockNote =
-      s.id === 'C2' ? 'Submit profile in C1' :
-      s.id === 'C3' ? 'Accept CV update in C2' :
-      s.id === 'C4' ? 'Finish assessment in C3' :
-      s.id === 'C5' || s.id === 'C6' ? 'Submit interview in C4' :
+      s.id === 'C2' ? 'Complete your application first' :
+      s.id === 'C3' ? 'Confirm your profile first' :
+      s.id === 'C4' ? 'Finish the assessment first' :
+      s.id === 'C5' || s.id === 'C6' ? 'Complete your interview first' :
       undefined
-    return { ...s, locked, lockNote: locked ? lockNote : undefined }
+    const complete =
+      s.id === 'C1' ? pipeline.profileSubmitted :
+      s.id === 'C2' ? pipeline.diffAccepted :
+      s.id === 'C3' ? pipeline.assessmentSubmitted :
+      s.id === 'C4' ? pipeline.interviewCompleted :
+      s.id === 'C5' ? step === 'C6' || pipeline.finalDecisionMade :
+      s.id === 'C6' ? pipeline.finalDecisionMade :
+      false
+    return {
+      ...s,
+      order: index + 1,
+      locked,
+      lockNote: locked ? lockNote : undefined,
+      complete,
+    }
   })
 
   function handleFreeMicPartialStable(partial: string) {
-    if (avatar.isThinking) return
+    if (avatar.isThinking || avatar.isSpeaking) return
     if (interviewConfig.mode === 'fixed_only') return
     if (interviewConfig.mode !== 'adaptive' && nextFixedQuestion(interviewConfig, interviewTurnsRef.current)) {
       return
@@ -947,7 +1269,7 @@ export function CandidatePortal() {
           {step === 'C1' && (
             <section className={`stack c1-flow c1-flow-${c1Phase}`}>
               <header className={`section-head c1-section-head is-${c1Phase}`}>
-                <h1>C1 · Apply & confirm profile</h1>
+                <h1>Apply and confirm profile</h1>
                 <ol className="c1-phase-steps" aria-label="C1 steps">
                   {['Upload', 'Review', 'Submit'].map((label, index) => (
                     <li
@@ -1077,7 +1399,7 @@ export function CandidatePortal() {
 
           {step === 'C2' && (
             <section className="card stack">
-              <h1>C2 · CV update confirmation</h1>
+              <h1>Profile review</h1>
               <p className="muted">Side-by-side diff — candidate must accept before profile is overwritten.</p>
               <button
                 type="button"
@@ -1117,7 +1439,7 @@ export function CandidatePortal() {
 
           {step === 'C3' && (
             <section ref={c3SectionRef} className="card stack">
-              <h1>C3 · Assessment exam</h1>
+              <h1>Technical assessment</h1>
               <p className="muted">Role-specific MCQ · auto-scored on submit.</p>
               <button
                 type="button"
@@ -1187,6 +1509,9 @@ export function CandidatePortal() {
                     setInterviewStarted(false)
                     setInterviewClosingReady(false)
                     setCandidateAnswerEn('')
+                    setInterviewTurns([])
+                    setInterviewStarted(false)
+                    setLiveAvatarReady(false)
                     avatar.setCaption('')
                     avatar.stop()
                     setPipeline({ assessmentSubmitted: true, interviewCompleted: false })
@@ -1201,7 +1526,7 @@ export function CandidatePortal() {
           {step === 'C4' && (
             <section className="stack">
               <header className="section-head">
-                <h1>C4 · AI avatar interview</h1>
+                <h1>AI interview</h1>
                 <p>HR-configured questions + adaptive follow-up · {interviewConfigSummary(interviewConfig)}</p>
               </header>
               <div className="interview-config-banner card">
@@ -1212,16 +1537,21 @@ export function CandidatePortal() {
                 <span className={interviewClosingReady || pipeline.interviewCompleted ? 'done' : 'active'}>1. Adaptive Q&amp;A</span>
                 <span className={pipeline.interviewCompleted ? 'done' : interviewPhase === 'ready_to_finish' ? 'active' : ''}>2. Submit &amp; scoring</span>
               </div>
-              <div className="grid-2">
+              <div className="interview-live-layout">
                 <AvatarPanel
                   speaking={avatar.isSpeaking || avatar.uiPhase === 'speaking'}
                   expression={avatar.expression}
-                  caption={avatar.caption || 'Start when ready'}
+                  caption={
+                    avatar.caption
+                    || (interviewStarted && avatarMode === 'liveavatar' && !liveAvatarReady
+                      ? 'Reconnect LiveAvatar to continue'
+                      : 'Press Start interview when you are ready')
+                  }
                   viseme={avatar.isSpeaking ? avatar.viseme : undefined}
                   avatarMode={avatarMode}
                   liveAvatarSessionActive={interviewStarted && avatarMode === 'liveavatar'}
                 />
-                <div className="card stack">
+                <div className="card stack interview-controls">
                   {(avatar.isConnecting || avatar.isThinking) && avatar.statusMessage && (
                     <div className="interview-loading" role="status" aria-live="polite">
                       <span className="interview-loading-spinner" aria-hidden="true" />
@@ -1229,6 +1559,12 @@ export function CandidatePortal() {
                     </div>
                   )}
                   {!interviewStarted ? (
+                    <>
+                      {llmError && avatarMode === 'liveavatar' && (
+                        <div className="banner-warn stack" role="alert">
+                          <p>{llmError}</p>
+                        </div>
+                      )}
                     <button type="button" className="primary" disabled={avatar.isBusy} onClick={() => {
                       unlockAudioPlayback()
                       setInterviewDuplexMode(true)
@@ -1238,9 +1574,8 @@ export function CandidatePortal() {
                         setLlmError('')
                         setInterviewStarted(true)
                         try {
-                          const ready = await avatar.connectLiveAvatar()
+                          const ready = await reconnectLiveAvatarSession()
                           if (!ready) {
-                            setLlmError('LiveAvatar video is not ready yet. Please try again in a moment.')
                             setInterviewStarted(false)
                             return
                           }
@@ -1261,41 +1596,30 @@ export function CandidatePortal() {
                             log('System', 'Avatar TTS', `opening (${opening.source}); mode: ${mode}`, 'C4')
                           }
                         } catch (error) {
-                          const message = error instanceof Error ? error.message : 'Interview start failed'
+                          const message = formatLiveAvatarError(error instanceof Error ? error.message : 'Interview start failed')
                           setLlmError(message)
                           log('System', 'Interview start failed', message, 'C4')
                           setInterviewStarted(false)
+                          setLiveAvatarReady(false)
                         }
                       })()
                     }}><Play size={16} /> Start interview</button>
+                    </>
                   ) : (
                     <>
-                      <div className="transcript">
-                        {interviewTurns.map((t) => (
-                          <div key={t.id} className={`turn ${t.speaker}`}>
-                            <strong>{t.speaker}</strong>
-                            <p>{t.text}</p>
-                            {t.followUpMeta && (
-                              <p className="follow-up-meta muted tiny">
-                                {t.followUpMeta.questionSource === 'jd' && 'JD question set'}
-                                {t.followUpMeta.questionSource === 'custom' && 'HR custom question'}
-                                {t.followUpMeta.questionSource === 'adaptive' && (
-                                  t.followUpMeta.mode === 'model' ? 'LLM follow-up' : 'Local template (LLM unavailable)'
-                                )}
-                                {!t.followUpMeta.questionSource && (
-                                  t.followUpMeta.mode === 'model' ? 'LLM follow-up' : 'Local template (LLM unavailable)'
-                                )}
-                                {t.followUpMeta.targetDimension
-                                  ? ` · ${t.followUpMeta.targetDimension}`
-                                  : ''}
-                                {t.followUpMeta.evidencePhrase
-                                  ? ` · grounded on “${t.followUpMeta.evidencePhrase}”`
-                                  : ''}
-                              </p>
-                            )}
+                      {avatarMode === 'liveavatar' && !liveAvatarReady && (
+                        <div className="banner-warn stack">
+                          <p>{llmError || 'LiveAvatar video disconnected. Reconnect to hear the interviewer, or restart if the session is stuck.'}</p>
+                          <div className="row-actions">
+                            <button type="button" className="primary" disabled={avatar.isBusy} onClick={() => { void reconnectLiveAvatarSession({ forceRefresh: true }) }}>
+                              <RefreshCw size={16} /> Reconnect video
+                            </button>
+                            <button type="button" disabled={avatar.isBusy} onClick={restartInterview}>
+                              <RotateCcw size={16} /> Restart interview
+                            </button>
                           </div>
-                        ))}
-                      </div>
+                        </div>
+                      )}
                       {llmError && <p className="danger-text">{llmError}</p>}
                       {avatar.isSpeaking && (
                         <button type="button" className="danger" onClick={interruptAvatar}>
@@ -1311,7 +1635,7 @@ export function CandidatePortal() {
                               ? ` · ${interviewProgress.minRequired}–${interviewProgress.maxAllowed} adaptive questions (minimum ${interviewProgress.minRequired} before wrap-up)`
                               : ` · up to ${interviewProgress.maxAllowed} · AI may close when evidence is sufficient`}
                             {interviewProgress.answered > 0 ? ' · contextual follow-up after each reply' : ''}
-                            {' · '}duplex — speak over the avatar; pause to hand off.
+                            {' · '}duplex — speak when ready; pause ~2s to submit your answer.
                           </p>
                           <FreeMicPanel
                             active={!avatar.isConnecting}
@@ -1362,32 +1686,35 @@ export function CandidatePortal() {
           )}
 
           {step === 'C5' && (
-            <section className="card stack">
-              <h1>C5 · My match score & tips</h1>
-              {matchLoading && (
+            matchLoading && !match ? (
+              <section className="card stack">
+                <h1>My match score</h1>
                 <p className="muted" role="status">Analyzing your CV against the job description…</p>
-              )}
-              {match && (
-                <>
-                  <p>Match: <strong>{match.totalScore}%</strong> for {FINANCE_JOB.title}</p>
-                  <p className="muted">
-                    LLM rubric · {match.matchedCount}/{match.totalDimensions} dimensions evidenced
-                  </p>
-                  <p className="muted">Assessment: {assessmentScore}% · Interview submitted — awaiting HR decision.</p>
-                  <ul>
-                    {(match.improvementTips?.length ? match.improvementTips : buildImprovementTips(match)).map((t) => (
-                      <li key={t}>{t}</li>
-                    ))}
-                  </ul>
-                </>
-              )}
-              <button type="button" className="primary" onClick={() => setStep('C6')}>View application status</button>
-            </section>
+              </section>
+            ) : match ? (
+              <CandidateScorePanel
+                match={match}
+                assessmentScore={assessmentScore}
+                interviewTurns={interviewTurns}
+                interviewCompleted={pipeline.interviewCompleted}
+                jobTitle={FINANCE_JOB.title}
+                matchLoading={matchLoading}
+                onContinue={() => setStep('C6')}
+              />
+            ) : (
+              <section className="card stack">
+                <h1>My match score</h1>
+                <p className="muted">Match analysis unavailable — check your connection or retry from C1.</p>
+                <button type="button" className="primary" onClick={() => setStep('C6')}>
+                  View application status
+                </button>
+              </section>
+            )
           )}
 
           {step === 'C6' && (
             <section className="card">
-              <h1>C6 · Application status</h1>
+              <h1>Application status</h1>
               <ul className="status-list">
                 <li className="done">Profile submitted</li>
                 <li className="done">Assessment completed ({assessmentScore}%)</li>
@@ -1423,5 +1750,251 @@ export function CandidatePortal() {
       {evidenceModal && <EvidenceModal {...evidenceModal} onClose={() => setEvidenceModal(null)} />}
       {sourceDoc && <SourceDocumentModal {...sourceDoc} onClose={() => setSourceDoc(null)} />}
     </>
+  )
+}
+
+interface CandidateScorePanelProps {
+  match: CandidateMatchWithTips
+  assessmentScore: number
+  interviewTurns: InterviewTurn[]
+  interviewCompleted: boolean
+  jobTitle?: string
+  matchLoading?: boolean
+  onContinue: () => void
+}
+
+function CandidateScorePanel({
+  match,
+  assessmentScore,
+  interviewTurns,
+  interviewCompleted,
+  jobTitle = FINANCE_JOB.title,
+  matchLoading = false,
+  onContinue,
+}: CandidateScorePanelProps) {
+  const { pillarWeights: weights, jdWeights } = useScoringWeights()
+  const weightedDimensions = useMemo(
+    () => applyJdWeights(match.dimensions, jdWeights),
+    [match.dimensions, jdWeights],
+  )
+  const cvScore = useMemo(
+    () => computeMatchTotalScore(match.dimensions, jdWeights),
+    [match.dimensions, jdWeights],
+  )
+  const [interviewReport, setInterviewReport] = useState<AssessmentResult | null>(null)
+  const [reportLoading, setReportLoading] = useState(false)
+
+  const assessmentKey = useMemo(
+    () => buildAssessmentKey({ assessmentScore, turns: interviewTurns }),
+    [assessmentScore, interviewTurns],
+  )
+
+  useEffect(() => {
+    if (!interviewCompleted || interviewTurns.length === 0) {
+      setInterviewReport(null)
+      return
+    }
+
+    let active = true
+    setReportLoading(true)
+    cachedLlmAssessment(assessmentKey, () =>
+      localAi.generateAssessment({
+        turns: interviewTurns,
+        assessmentScore,
+        matchScore: cvScore,
+        jobTitle,
+      }),
+    )
+      .then((report) => {
+        if (active) setInterviewReport(report)
+      })
+      .catch(() => {
+        if (active) setInterviewReport(null)
+      })
+      .finally(() => {
+        if (active) setReportLoading(false)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [assessmentKey, assessmentScore, cvScore, interviewCompleted, interviewTurns, jobTitle])
+
+  const interviewScore = useMemo(
+    () =>
+      interviewReport
+        ? computeInterviewScoreFromDimensions(interviewReport.dimensions)
+        : null,
+    [interviewReport],
+  )
+
+  const overallScore = useMemo(
+    () => computeOverallScore(cvScore, assessmentScore, interviewScore, weights),
+    [assessmentScore, cvScore, interviewScore, weights],
+  )
+
+  const tips = match.improvementTips?.length
+    ? match.improvementTips
+    : buildImprovementTips(match)
+
+  const meetsThreshold = overallScore >= 60
+  const busy = matchLoading || reportLoading
+
+  return (
+    <section className="command-centre stack" aria-busy={busy}>
+      <header className="command-centre-head section-head">
+        <div>
+          <h1>My match score</h1>
+          <p className="muted">
+            Command centre view for <strong>{jobTitle}</strong> - weighted composite from CV evidence,
+            technical assessment, and interview evaluation.
+          </p>
+        </div>
+      </header>
+
+      {busy && (
+        <p className="muted" role="status">
+          {matchLoading ? 'Analyzing your CV against the job description...' : 'Loading interview evaluation...'}
+        </p>
+      )}
+
+      <div className="command-centre-hero card">
+        <div className="command-centre-score-block">
+          <span className="command-centre-score-label">Overall match</span>
+          <strong className="command-centre-score-value">{overallScore}</strong>
+          <span className={`status-pill ${meetsThreshold ? 'ok' : 'review'}`}>
+            {meetsThreshold ? 'Meets role threshold' : 'Below role threshold'}
+          </span>
+          <span className="command-centre-score-meta tiny muted">
+            {match.matchedCount}/{match.totalDimensions} JD dimensions evidenced in CV
+          </span>
+        </div>
+        <div className="command-centre-formula">
+          <span className="tiny muted">Score derivation</span>
+          <p>
+            ({cvScore}% CV x {weightShare(weights.cvMatch, weights)}%) + ({assessmentScore}% assessment x{' '}
+            {weightShare(weights.assessment, weights)}%)
+            {interviewScore != null ? (
+              <>
+                {' '}
+                + ({interviewScore}% interview x {weightShare(weights.interview, weights)}%)
+              </>
+            ) : (
+              <> - interview pillar pending HR evaluation</>
+            )}
+          </p>
+          <p className="tiny muted">
+            Pillar weights follow the recruiter rubric configured in HR portal (read-only here).
+          </p>
+        </div>
+      </div>
+
+      <div className="kpi-row command-centre-kpis">
+        <div className="kpi-card command-centre-kpi">
+          <Target size={16} aria-hidden />
+          <span>CV-JD matching</span>
+          <strong>{cvScore}%</strong>
+          <em className="tiny muted">+{pillarContribution(cvScore, weights.cvMatch, weights)} pts composite</em>
+        </div>
+        <div className="kpi-card command-centre-kpi">
+          <FileCheck size={16} aria-hidden />
+          <span>Technical assessment</span>
+          <strong>{assessmentScore}%</strong>
+          <em className="tiny muted">+{pillarContribution(assessmentScore, weights.assessment, weights)} pts composite</em>
+        </div>
+        <div className="kpi-card command-centre-kpi">
+          <MessageSquare size={16} aria-hidden />
+          <span>Interview evaluation</span>
+          <strong>{interviewScore != null ? `${interviewScore}%` : 'Pending'}</strong>
+          <em className="tiny muted">
+            {interviewScore != null
+              ? `+${pillarContribution(interviewScore, weights.interview, weights)} pts composite`
+              : interviewCompleted
+                ? 'HR review in progress'
+                : 'Complete C4 interview first'}
+          </em>
+        </div>
+      </div>
+
+      <div className="command-centre-grid">
+        <div className="card command-centre-dimensions">
+          <header className="command-centre-panel-head">
+            <h3>CV facts and dimension scores</h3>
+            <p className="muted tiny">Each row links achievement % to evidence extracted from your CV.</p>
+          </header>
+          <ul className="command-centre-dim-list">
+            {weightedDimensions.map((dim) => {
+              const pct = dimensionAchievementPct(dim)
+              return (
+                <li key={dim.key} className={`command-centre-dim ${dim.matched ? 'matched' : 'gap'}`}>
+                  <div className="command-centre-dim-head">
+                    <span className="command-centre-dim-label">
+                      {dim.label}
+                      <span className="tiny muted"> · JD weight {dim.weight}</span>
+                    </span>
+                    <span className="command-centre-dim-pct">{pct}%</span>
+                  </div>
+                  <div className="bar-track">
+                    <div
+                      className={`bar-fill ${dim.matched ? 'match' : 'weak'}`}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                  <p className="command-centre-dim-evidence tiny muted">{dim.evidence}</p>
+                </li>
+              )
+            })}
+          </ul>
+        </div>
+
+        <div className="stack">
+          <div className="card command-centre-tips">
+            <header className="command-centre-panel-head">
+              <h3>Improvement tips</h3>
+              <p className="muted tiny">Actionable suggestions based on gaps in your profile evidence.</p>
+            </header>
+            <ul className="command-centre-tip-list">
+              {tips.map((tip) => (
+                <li key={tip}>{tip}</li>
+              ))}
+            </ul>
+          </div>
+
+          {interviewReport && (
+            <div className="card command-centre-interview">
+              <header className="command-centre-panel-head">
+                <h3>Interview dimension scores</h3>
+                <p className="muted tiny">LLM evaluation from your avatar interview transcript.</p>
+              </header>
+              <ul className="command-centre-dim-list compact">
+                {interviewReport.dimensions.map((dim) => {
+                  const pct = dim.maxScore > 0 ? Math.round((dim.score / dim.maxScore) * 100) : dim.score
+                  return (
+                    <li key={dim.label} className="command-centre-dim matched">
+                      <div className="command-centre-dim-head">
+                        <span className="command-centre-dim-label">{dim.label}</span>
+                        <span className="command-centre-dim-pct">{pct}%</span>
+                      </div>
+                      <div className="bar-track">
+                        <div
+                          className={`bar-fill ${pct >= 60 ? 'match' : 'weak'}`}
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="command-centre-actions">
+        <button type="button" className="primary" onClick={onContinue}>
+          View application status <ArrowRight size={16} aria-hidden />
+        </button>
+      </div>
+    </section>
   )
 }

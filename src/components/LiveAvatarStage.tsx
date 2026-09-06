@@ -4,10 +4,9 @@ import {
   getLiveAvatarLastError,
   isLiveAvatarReconnectPaused,
   liveAvatarVideoHealthy,
-  refreshLiveAvatarSession,
-  reconnectLiveAvatarVideo,
   setLiveAvatarVideoElement,
 } from '../lib/liveavatarPlayer'
+import { formatLiveAvatarError } from '../lib/liveavatarErrors'
 
 interface LiveAvatarStageProps {
   /** Avatar is currently speaking */
@@ -52,12 +51,9 @@ export function LiveAvatarStage({
 
       if (!ok) {
         setStatus('error')
-        setErrorMessage(getLiveAvatarLastError() ?? 'Could not connect LiveAvatar video')
+        setErrorMessage(formatLiveAvatarError(getLiveAvatarLastError() ?? 'Could not connect LiveAvatar video'))
         return
       }
-
-      await reconnectLiveAvatarVideo()
-      if (cancelled) return
 
       const video = videoRef.current
       if (video && video.videoWidth > 0) {
@@ -65,14 +61,18 @@ export function LiveAvatarStage({
         return
       }
 
-      window.setTimeout(() => {
-        if (cancelled) return
+      const deadline = Date.now() + 25_000
+      while (Date.now() < deadline && !cancelled) {
+        await new Promise((resolve) => window.setTimeout(resolve, 250))
         if (videoRef.current && videoRef.current.videoWidth > 0) {
           setStatus('ready')
-        } else {
-          setStatus('connecting')
+          return
         }
-      }, 1200)
+      }
+
+      if (!cancelled) {
+        setStatus('connecting')
+      }
     }
 
     void connect()
@@ -85,12 +85,18 @@ export function LiveAvatarStage({
     const video = videoRef.current
     if (!video) return
 
-    const onPlaying = () => setStatus('ready')
-    video.addEventListener('playing', onPlaying)
-    video.addEventListener('loadeddata', onPlaying)
+    const onReady = () => {
+      if (liveAvatarVideoHealthy() || video.videoWidth > 0) {
+        setStatus('ready')
+        setErrorMessage('')
+      }
+    }
+
+    video.addEventListener('playing', onReady)
+    video.addEventListener('loadeddata', onReady)
     return () => {
-      video.removeEventListener('playing', onPlaying)
-      video.removeEventListener('loadeddata', onPlaying)
+      video.removeEventListener('playing', onReady)
+      video.removeEventListener('loadeddata', onReady)
     }
   }, [])
 
@@ -100,24 +106,14 @@ export function LiveAvatarStage({
     const timer = window.setInterval(() => {
       if (isLiveAvatarReconnectPaused()) {
         setStatus('error')
-        setErrorMessage(getLiveAvatarLastError() ?? 'LiveAvatar reconnect paused')
+        setErrorMessage(formatLiveAvatarError(getLiveAvatarLastError() ?? 'LiveAvatar reconnect paused'))
         return
       }
       if (liveAvatarVideoHealthy()) {
-        setStatus((current) => (current === 'ready' ? current : 'ready'))
-        return
+        setStatus('ready')
+        setErrorMessage('')
       }
-      setStatus('connecting')
-      void refreshLiveAvatarSession().then((ok) => {
-        if (ok && liveAvatarVideoHealthy()) {
-          setStatus('ready')
-          setErrorMessage('')
-        } else if (!ok || isLiveAvatarReconnectPaused()) {
-          setStatus('error')
-          setErrorMessage(getLiveAvatarLastError() ?? 'LiveAvatar video reconnect failed')
-        }
-      })
-    }, 20_000)
+    }, 3000)
 
     return () => window.clearInterval(timer)
   }, [sessionActive])
@@ -151,7 +147,7 @@ export function LiveAvatarStage({
           ) : (
             <>
               <span className="interview-loading-spinner" aria-hidden="true" />
-              <span>Connecting LiveAvatar…</span>
+              <span>Connecting LiveAvatar… first connect may take up to 60 seconds.</span>
             </>
           )}
         </div>

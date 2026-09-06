@@ -5,6 +5,15 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Versioning foll
 
 ## [Unreleased]
 
+### Changed
+- Platform UI step 1-3: sovereign navy design tokens (Inter, Source Serif 4, IBM Plex Mono), 235px sidebar shell, Evidence Review card framing
+- Platform UI step 4: Candidate C5 Command Centre score panel with composite derivation, pillar KPIs, CV dimension evidence, and improvement tips
+- Platform UI step 5-7: mock sign-in + 2FA entry flow, HR Review Queues (config split + queue table), combined user journey doc
+- Journey Test Channel (PDF screen 03): third portal entry, 12-step navigator, jump to Candidate/HR without forking session data
+- Sidebar navigation: product labels, progress markers, and completion states (C/H step codes removed from nav chrome)
+- Mock MFA: one-time 6-digit code generated per sign-in attempt (simulated authenticator push)
+- Changelog HTML (ZH + EN, embedded screenshots): `deliverables/demo-5302/platform-ui-changelog/platform-ui-changes.html`, `platform-ui-changes-en.html` (`npm run docs:platform-ui`)
+
 ## [0.4.0] - 2026-08-26
 
 ### Added

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Download, UserCheck, UserX, Zap } from 'lucide-react'
+import { Download, Settings2, UserCheck, UserX, Zap } from 'lucide-react'
 import { useDemo } from '../context/DemoContext'
 import { EvidenceModal } from './EvidenceModal'
 import { SourceDocumentModal } from './SourceDocumentModal'
@@ -8,13 +8,15 @@ import { InterviewReviewPanel } from './InterviewReviewPanel'
 import { CandidateJourneyPanel } from './CandidateJourneyPanel'
 import { ScoreSummaryPanel } from './ScoreSummaryPanel'
 import { CurrentCandidateCard } from './CurrentCandidateCard'
-import { Layout } from './Layout'
+import { Layout } from './CandidatePortal'
 import { AuditTrailTable } from './AuditTrailTable'
 import { MatchDashboard } from './MatchDashboard'
-import { InterviewSetupPanel } from './InterviewSetupPanel'
+import { HrLiveInterviewPanel } from './HrLiveInterviewPanel'
+import { RecruiterConfigModal } from './RecruiterConfigModal'
 import { PRIMARY_CANDIDATE_ID } from '../data/candidates'
 import { FINANCE_JOB } from '../data/job'
 import { HR_STEPS } from '../lib/demo'
+import { interviewConfigSummary } from '../lib/interviewConfig'
 import { localAi, type AssessmentResult } from '../lib/localAi'
 import {
   computeInterviewScoreFromDimensions,
@@ -26,6 +28,7 @@ import {
   saveJdDimensionWeights,
   savePillarWeights,
   applyJdWeights,
+  jdWeightTotal,
   type JdDimensionWeight,
   type PillarWeights,
 } from '../lib/hrScoring'
@@ -46,6 +49,7 @@ export function HrPortal() {
     offline, setOffline,
     fields, auditLog,
     interviewConfig, setInterviewConfig,
+    hrInjectedQuestion, setHrInjectedQuestion,
   } = useDemo()
 
   const [selectedId, setSelectedId] = useState(PRIMARY_CANDIDATE_ID)
@@ -62,6 +66,7 @@ export function HrPortal() {
   const [journeyCandidate, setJourneyCandidate] = useState<string | null>(null)
   const [pillarWeights, setPillarWeights] = useState<PillarWeights>(() => loadPillarWeights())
   const [jdWeights, setJdWeights] = useState<JdDimensionWeight[]>(() => loadJdDimensionWeights())
+  const [configModalOpen, setConfigModalOpen] = useState(false)
 
   const filtered = useMemo(() => {
     return matches.filter((m) => {
@@ -117,6 +122,7 @@ export function HrPortal() {
     )
   }
   const readyForInterviewReview = pipeline.interviewCompleted || interviewTurns.length > 0
+  const interviewLive = pipeline.assessmentSubmitted && !pipeline.interviewCompleted
   const fieldsKey = useMemo(() => profileFieldsKey(fields), [fields])
   const assessmentKey = useMemo(
     () => buildAssessmentKey({
@@ -184,16 +190,29 @@ export function HrPortal() {
     return () => { active = false }
   }, [assessmentKey, readyForInterviewReview])
 
-  const steps = HR_STEPS.map((s) => {
+  const steps = HR_STEPS.map((s, index) => {
     const locked =
       (s.id === 'H3' && !readyForInterviewReview) ||
       (s.id === 'H4' && !readyForInterviewReview) ||
       (s.id === 'H5' && !pipeline.finalDecisionMade)
     const lockNote =
-      s.id === 'H3' || s.id === 'H4' ? 'Complete C4 or load demo data' :
-      s.id === 'H5' ? 'Confirm decision in H4 first' :
+      s.id === 'H3' || s.id === 'H4' ? (interviewLive ? 'Interview in progress — review updates live' : 'Complete candidate C4 first') :
+      s.id === 'H5' ? 'Record a final decision first' :
       undefined
-    return { ...s, locked, lockNote: locked ? lockNote : undefined }
+    const complete =
+      s.id === 'H1' ? readyForInterviewReview || pipeline.shortlisted || pipeline.disqualified :
+      s.id === 'H2' ? pipeline.shortlisted || pipeline.disqualified :
+      s.id === 'H3' ? pipeline.shortlisted && (step === 'H4' || step === 'H5' || pipeline.finalDecisionMade) :
+      s.id === 'H4' ? pipeline.finalDecisionMade :
+      s.id === 'H5' ? pipeline.finalDecisionMade :
+      false
+    return {
+      ...s,
+      order: index + 1,
+      locked,
+      lockNote: locked ? lockNote : undefined,
+      complete,
+    }
   })
 
   function proceedToFinalDecision() {
@@ -247,17 +266,20 @@ export function HrPortal() {
     <Layout {...layoutProps}>
       {!readyForInterviewReview && (
         <div className="banner-warn">
-          No interview on this application yet. Complete the candidate flow in C4, or click{' '}
+          No interview on this application yet. Complete the candidate flow in C4 (same browser — tabs sync automatically), or click{' '}
           <strong>Load demo application</strong> to preload sample data.
         </div>
       )}
 
       {step === 'H1' && (
-        <section className="stack">
+        <section className="stack review-queues-screen">
           <header className="section-head dashboard-head">
             <div>
-              <h1>H1 · Matching dashboard</h1>
-              <p>{FINANCE_JOB.title} · LLM CV–JD rubric · evidence drill-down · candidate pool from simulated Jadarah read (I1)</p>
+              <h1>Review queues</h1>
+              <p>
+                {FINANCE_JOB.title} - pipeline queue, evidence drill-down, and recruiter configuration
+                (split per PDF screen 08).
+              </p>
             </div>
             {!readyForInterviewReview && (
               <button type="button" className="primary" onClick={seedDemoForHr}>
@@ -265,38 +287,73 @@ export function HrPortal() {
               </button>
             )}
           </header>
-          {matchLoading && <p className="muted" role="status">LLM is scoring candidates against the job description…</p>}
-          <InterviewSetupPanel
-            config={interviewConfig}
-            onChange={setInterviewConfig}
-            onSave={(saved) => log(
-              'Recruiter',
-              'Interview blueprint saved',
-              `${saved.customQuestions.length} custom · ${saved.enabledJdQuestionIds.length} JD · ${saved.mode}`,
-              'H1',
-            )}
+          {matchLoading && <p className="muted" role="status">LLM is scoring candidates against the job description...</p>}
+
+          <HrLiveInterviewPanel
+            interviewTurns={interviewTurns}
+            pipeline={pipeline}
+            hrInjectedQuestion={hrInjectedQuestion}
+            onQueueQuestion={(textEn) => {
+              setHrInjectedQuestion({ textEn, queuedAt: new Date().toISOString() })
+              log('Recruiter', 'Next question queued (live)', textEn, 'H1')
+            }}
+            onOpenReview={() => setStep('H3')}
           />
-          <div className="filters card">
-            <input placeholder="Filter: skill (e.g. portfolio)" value={filters.skill} onChange={(e) => setFilters({ ...filters, skill: e.target.value })} />
-            <input type="number" placeholder="Min years" value={filters.minYears || ''} onChange={(e) => setFilters({ ...filters, minYears: Number(e.target.value) || 0 })} />
-            <input placeholder="Degree keyword" value={filters.degree} onChange={(e) => setFilters({ ...filters, degree: e.target.value })} />
-            <button type="button" onClick={exportCsv}><Download size={16} /> Export Excel/CSV</button>
-            {exportMsg && <span className="ok-text">{exportMsg}</span>}
+
+          <div className="review-queues-layout">
+            <div className="review-queues-toolbar">
+              <button type="button" className="primary-outline" onClick={() => setConfigModalOpen(true)}>
+                <Settings2 size={16} /> Interview blueprint &amp; JD weights
+              </button>
+              <p className="muted tiny review-queues-config-summary">
+                {interviewConfigSummary(interviewConfig)} · JD weight total {jdWeightTotal(jdWeights)}
+              </p>
+            </div>
+            <div className="review-queues-main stack">
+              <div className="filters card">
+                <input placeholder="Filter: skill (e.g. portfolio)" value={filters.skill} onChange={(e) => setFilters({ ...filters, skill: e.target.value })} />
+                <input type="number" placeholder="Min years" value={filters.minYears || ''} onChange={(e) => setFilters({ ...filters, minYears: Number(e.target.value) || 0 })} />
+                <input placeholder="Degree keyword" value={filters.degree} onChange={(e) => setFilters({ ...filters, degree: e.target.value })} />
+                <button type="button" onClick={exportCsv}><Download size={16} /> Export CSV</button>
+                {exportMsg && <span className="ok-text">{exportMsg}</span>}
+              </div>
+              <MatchDashboard
+                jobTitle={FINANCE_JOB.title}
+                matches={filtered}
+                selectedId={selectedId}
+                onSelect={setSelectedId}
+                jdWeights={jdWeights}
+                pipeline={pipeline}
+                assessmentScore={assessmentScore}
+                interviewTurnCount={interviewTurns.length}
+                interviewCompleted={pipeline.interviewCompleted}
+                onEvidence={(title, evidence, documentText) =>
+                  setEvidenceModal({ title, evidence, source: documentText })
+                }
+                onOpenSource={(title, url) => setSourceDoc({ title, url })}
+                onViewJourney={setJourneyCandidate}
+              />
+            </div>
           </div>
-          <MatchDashboard
-            jobTitle={FINANCE_JOB.title}
-            matches={filtered}
-            selectedId={selectedId}
-            onSelect={setSelectedId}
+
+          <RecruiterConfigModal
+            open={configModalOpen}
+            onClose={() => setConfigModalOpen(false)}
+            interviewConfig={interviewConfig}
+            onInterviewConfigChange={setInterviewConfig}
+            onInterviewConfigSave={(saved) => {
+              log(
+                'Recruiter',
+                'Interview blueprint saved',
+                `${saved.customQuestions.length} custom - ${saved.enabledJdQuestionIds.length} JD - ${saved.mode}`,
+                'H1',
+              )
+            }}
             jdWeights={jdWeights}
             onJdWeightsChange={handleJdWeightsChange}
-            onEvidence={(title, evidence, documentText) =>
-              setEvidenceModal({ title, evidence, source: documentText })
-            }
-            onOpenSource={(title, url) => setSourceDoc({ title, url })}
-            onViewJourney={setJourneyCandidate}
           />
-          <button type="button" className="primary" onClick={() => setStep('H2')}>Continue to shortlist / reject →</button>
+
+          <button type="button" className="primary" onClick={() => setStep('H2')}>Continue to shortlist / reject</button>
         </section>
       )}
 
@@ -304,7 +361,7 @@ export function HrPortal() {
         <section className="stack">
           <header className="section-head">
             <div>
-              <h1>H2 · Shortlist or decline candidate</h1>
+              <h1>Screening decision</h1>
               <p>Review the candidate's match score and decide whether to move forward</p>
             </div>
           </header>
@@ -346,7 +403,7 @@ export function HrPortal() {
         <section className="stack">
           <header className="section-head">
             <div>
-              <h1>H3 · Review interview recording</h1>
+              <h1>Interview review</h1>
               <p className="muted">HR-only · avatar replay + transcript · candidate cannot access.</p>
             </div>
           </header>
@@ -376,7 +433,7 @@ export function HrPortal() {
         <section className="stack final-decision-screen">
           <header className="section-head">
             <div>
-              <h1>H4 · Final human decision</h1>
+              <h1>Final decision</h1>
               <p>AI provides recommendation only — recruiter holds final authority. Outcome syncs to simulated Jadarah + Oracle EBS endpoints.</p>
             </div>
           </header>
@@ -448,7 +505,7 @@ export function HrPortal() {
       {step === 'H5' && (
         <section className="stack">
           <div className="closing-frame card">
-            <h1>H5 · Demo journey complete</h1>
+            <h1>Audit and export</h1>
             <ul className="closing-list">
               <li>Dual portals — candidate privacy &amp; HR control</li>
               <li>Evidence-linked AI — parsing, matching, scoring</li>

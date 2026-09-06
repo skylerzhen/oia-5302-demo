@@ -1,5 +1,11 @@
 import type { InterviewEvaluationReport } from '../lib/interviewReport'
 
+function interviewDimensionPct(score: number, maxScore?: number): number {
+  const max = maxScore ?? 100
+  if (max <= 0) return 0
+  return Math.round((score / max) * 100)
+}
+
 interface EvaluationReportPanelProps {
   report: InterviewEvaluationReport
 }
@@ -18,7 +24,7 @@ export function EvaluationReportPanel({ report }: EvaluationReportPanelProps) {
         {report.dimensions.map((dimension) => (
           <article key={dimension.label} className="report-item">
             <div className="report-score">
-              <strong>{dimension.score}%</strong>
+              <strong>{interviewDimensionPct(dimension.score, dimension.maxScore)}%</strong>
               <span>{dimension.label}</span>
             </div>
             <div>

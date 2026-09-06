@@ -1,18 +1,18 @@
 export const CANDIDATE_STEPS = [
-  { id: 'C1', label: 'Apply & parse CV' },
-  { id: 'C2', label: 'CV update confirm' },
-  { id: 'C3', label: 'Assessment exam' },
-  { id: 'C4', label: 'AI avatar interview' },
-  { id: 'C5', label: 'My score & tips' },
-  { id: 'C6', label: 'Application status' },
+  { id: 'C1', label: 'Application', hint: 'Upload CV and confirm profile' },
+  { id: 'C2', label: 'Profile review', hint: 'Confirm extracted details' },
+  { id: 'C3', label: 'Technical assessment', hint: 'Role competency exam' },
+  { id: 'C4', label: 'AI interview', hint: 'Live avatar session' },
+  { id: 'C5', label: 'Match insights', hint: 'Score breakdown and tips' },
+  { id: 'C6', label: 'Application status', hint: 'Outcome and next steps' },
 ] as const
 
 export const HR_STEPS = [
-  { id: 'H1', label: 'Matching dashboard' },
-  { id: 'H2', label: 'Shortlist / reject' },
-  { id: 'H3', label: 'Review interview' },
-  { id: 'H4', label: 'Final decision' },
-  { id: 'H5', label: 'Demo complete' },
+  { id: 'H1', label: 'Review queues', hint: 'Rank pool and interview setup' },
+  { id: 'H2', label: 'Screening decision', hint: 'Shortlist or decline with reason' },
+  { id: 'H3', label: 'Interview review', hint: 'Recording and evaluation' },
+  { id: 'H4', label: 'Final decision', hint: 'Weighted composite and hire/reject' },
+  { id: 'H5', label: 'Audit and export', hint: 'Trail and compliance wrap-up' },
 ] as const
 
 export function exportMatchesCsv(rows: Array<{ name: string; score: number; qualified: string }>): string {

@@ -291,30 +291,6 @@ async function fetchServerTts(text: string, signal?: AbortSignal): Promise<TtsRe
   }
 }
 
-async function speakLiveAvatarFallback(
-  text: string,
-  prefetchedTts: TtsResult | null | undefined,
-  signal?: AbortSignal,
-): Promise<string> {
-  const fallbackTts = prefetchedTts ?? await fetchServerTts(text, signal)
-  const marks = fallbackTts?.visemeMarks?.length
-    ? fallbackTts.visemeMarks
-    : marksFromTts(text, 'en', estimateDurationMs(text))
-
-  if (fallbackTts?.audioBase64) {
-    await speakWithAudio(
-      fallbackTts.audioBase64,
-      fallbackTts.mimeType ?? 'audio/mpeg',
-      marks,
-      signal,
-    )
-    return fallbackTts.ttsProvider === 'openai' ? 'openai-fallback' : 'tts-fallback'
-  }
-  if (await speakWithClientEdgeTts(text, signal)) return 'edge-fallback'
-  await speakWithBrowser(text, signal)
-  return 'browser-fallback'
-}
-
 async function speakWithHeyGen(
   text: string,
   prefetchedTts: TtsResult | null | undefined,
@@ -381,15 +357,9 @@ export async function speakInterviewLine(options: {
       if (await speakLiveAvatarOnce(text, signal)) {
         return 'liveavatar'
       }
-      if (await speakLiveAvatarOnce(text, signal)) {
-        return 'liveavatar-retry'
-      }
-      if (isInterviewDuplexMode()) {
-        // Avoid MP3/browser fallback in duplex — different voice causes glitches.
-        console.warn('[voice] LiveAvatar speak failed twice; skipping fallback in duplex mode')
-        return null
-      }
-      return speakLiveAvatarFallback(text, prefetchedTts, signal)
+      // Never mix LiveAvatar with MP3/Edge/browser fallback — different voice + overlapping audio.
+      console.warn('[voice] LiveAvatar speak failed; skipping non-LiveAvatar fallback')
+      return null
     }
 
     const resolvedTts = prefetchedTts ?? await fetchServerTts(text, signal)
@@ -489,12 +459,16 @@ export function warmInterviewSpeech() {
   warmSpeechDone = true
   unlockAudioPlayback()
   void loadSpeechVoices()
-  try {
-    const audio = new Audio(OPENING_AUDIO_URL)
-    audio.preload = 'auto'
-    audio.load()
-  } catch {
-    // Optional prefetch — ignore failures.
+  // Prefetch cached opening MP3 only for 2D mode — LiveAvatar uses onyx via server PCM.
+  if (!liveAvatarEnabled && !heygenAvatarEnabled) {
+    try {
+      const audio = new Audio(OPENING_AUDIO_URL)
+      audio.preload = 'auto'
+      audio.load()
+    } catch {
+      // Optional prefetch — ignore failures.
+    }
   }
   void localAi.status().catch(() => undefined)
+  void localAi.liveavatarStatus().catch(() => undefined)
 }

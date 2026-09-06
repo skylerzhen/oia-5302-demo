@@ -17,6 +17,9 @@ interface FreeMicPanelProps {
   typedPlaceholder?: string
 }
 
+/** Ignore mic submissions for this long after the avatar stops (prevents bleed-through). */
+const AVATAR_COOLDOWN_MS = 3_000
+
 export function FreeMicPanel({
   active,
   llmBusy,
@@ -41,6 +44,9 @@ export function FreeMicPanel({
   const onPartialStableRef = useRef(onPartialStable)
   const onUtteranceRef = useRef(onUtterance)
   const utteranceSubmittingRef = useRef(false)
+  const avatarCooldownUntilRef = useRef(0)
+  const userBargedInRef = useRef(false)
+  const wasAvatarSpeakingRef = useRef(false)
   const supported = isFreeMicSupported()
 
   llmBusyRef.current = llmBusy
@@ -48,6 +54,18 @@ export function FreeMicPanel({
   onBargeInRef.current = onBargeIn
   onPartialStableRef.current = onPartialStable
   onUtteranceRef.current = onUtterance
+
+  useEffect(() => {
+    if (avatarSpeaking) {
+      userBargedInRef.current = false
+      wasAvatarSpeakingRef.current = true
+      return
+    }
+    if (wasAvatarSpeakingRef.current) {
+      wasAvatarSpeakingRef.current = false
+      avatarCooldownUntilRef.current = Date.now() + AVATAR_COOLDOWN_MS
+    }
+  }, [avatarSpeaking])
 
   useEffect(() => {
     if (!active || !supported) {
@@ -63,27 +81,42 @@ export function FreeMicPanel({
 
     try {
       sessionRef.current = startFreeMicSession({
-        onLiveCaption: setLiveCaption,
+        onLiveCaption: (caption) => {
+          if (avatarSpeakingRef.current && !userBargedInRef.current) {
+            setLiveCaption('')
+            return
+          }
+          setLiveCaption(caption)
+        },
         onSpeechStart: (caption) => {
-          if (avatarSpeakingRef.current && caption.length >= 6) {
+          if (avatarSpeakingRef.current && caption.length >= 10) {
+            userBargedInRef.current = true
             onBargeInRef.current()
           }
         },
         onPartialStable: (partial) => {
-          if (llmBusyRef.current) return
+          if (llmBusyRef.current || avatarSpeakingRef.current) return
+          if (Date.now() < avatarCooldownUntilRef.current) return
           setFollowing(true)
           onPartialStableRef.current(partial)
           window.setTimeout(() => setFollowing(false), 1800)
         },
+        shouldAcceptUtterance: () => {
+          if (llmBusyRef.current || utteranceSubmittingRef.current) return false
+          if (avatarSpeakingRef.current) return false
+          if (Date.now() < avatarCooldownUntilRef.current && !userBargedInRef.current) return false
+          return true
+        },
         onUtteranceComplete: (text) => {
           if (llmBusyRef.current || utteranceSubmittingRef.current) return
           utteranceSubmittingRef.current = true
+          userBargedInRef.current = false
           setLiveCaption('')
           setFollowing(false)
           onUtteranceRef.current(text)
           window.setTimeout(() => {
             utteranceSubmittingRef.current = false
-          }, 300)
+          }, 2_500)
         },
         onError: (message) => setMicError(message),
       })
@@ -116,14 +149,18 @@ export function FreeMicPanel({
       </div>
 
       <p className="muted tiny">
-        Mic stays open — talk over the avatar anytime. Brief pause (~1s) hands off your turn; no
-        button needed.
+        Mic stays open — talk over the avatar anytime. Pause ~2 seconds when you finish your answer;
+        the interviewer waits until you speak (avatar audio is ignored).
       </p>
 
       {active && supported && (
         <div className="free-mic-caption" aria-live="polite">
           <span className="muted tiny">You · live caption</span>
-          <p>{liveCaption || (llmBusy ? 'Generating follow-up…' : 'Listening…')}</p>
+          <p>
+            {avatarSpeaking && !liveCaption
+              ? 'Interviewer speaking — your turn after they finish…'
+              : liveCaption || (llmBusy ? 'Generating follow-up…' : 'Listening…')}
+          </p>
         </div>
       )}
 

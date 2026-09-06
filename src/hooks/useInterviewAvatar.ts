@@ -7,9 +7,9 @@ import {
   type InterviewAvatarUiPhase,
 } from '../lib/interviewAvatarController'
 import { stopActiveSpeech } from '../lib/voiceSpeak'
-import type { AvatarExpression } from '../components/Avatar2DInterviewer'
+import type { AvatarExpression } from '../types'
 
-export function useInterviewAvatar(avatarMode: '2d' | 'heygen' | 'liveavatar') {
+export function useInterviewAvatar(avatarMode: 'heygen' | 'liveavatar') {
   const [uiPhase, setUiPhase] = useState<InterviewAvatarUiPhase>('idle')
   const [caption, setCaption] = useState('')
   const [expression, setExpression] = useState<AvatarExpression>('neutral')

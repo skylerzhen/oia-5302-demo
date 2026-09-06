@@ -1,15 +1,14 @@
 /** Prefer the most natural built-in voices when server neural TTS is unavailable. */
 const PREFERRED_VOICE_NAMES = [
+  'Google UK English Male',
+  'Microsoft Guy Online (Natural)',
+  'Microsoft Ryan Online (Natural)',
+  'Microsoft David',
+  'Microsoft Mark',
   'Google US English',
-  'Google UK English Female',
-  'Microsoft Aria Online (Natural)',
-  'Microsoft Jenny Online (Natural)',
-  'Microsoft Aria',
-  'Microsoft Jenny',
-  'Samantha',
-  'Karen',
-  'Moira',
-  'Tessa',
+  'Daniel',
+  'James',
+  'Alex',
 ]
 
 const FEMALE_VOICE_PATTERN =
@@ -24,8 +23,8 @@ function voiceScore(voice: SpeechSynthesisVoice): number {
     }
   }
   if (/neural|natural|premium|enhanced|online/i.test(label)) score += 40
-  if (FEMALE_VOICE_PATTERN.test(label)) score += 20
-  if (/male|daniel|david|james|mark|tom|fred|richard|guy|alex/i.test(label)) score -= 30
+  if (/male|daniel|david|james|mark|tom|fred|richard|guy|alex|andrew|ryan|brian|george|christopher/i.test(label)) score += 35
+  if (FEMALE_VOICE_PATTERN.test(label)) score -= 25
   if (voice.lang.toLowerCase().startsWith('en')) score += 10
   if (voice.default) score += 5
   return score

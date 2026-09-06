@@ -1,4 +1,4 @@
-export type UserRole = 'candidate' | 'hr'
+export type UserRole = 'candidate' | 'hr' | 'journey'
 
 export type CandidateStepId = 'C1' | 'C2' | 'C3' | 'C4' | 'C5' | 'C6'
 export type HrStepId = 'H1' | 'H2' | 'H3' | 'H4' | 'H5'
@@ -85,6 +85,8 @@ export interface McqQuestion {
 
 export type Viseme = 'rest' | 'A' | 'E' | 'O' | 'M' | 'F'
 
+export type AvatarExpression = 'neutral' | 'supportive' | 'curious' | 'gesture'
+
 export interface InterviewQuestion {
   id: string
   textEn: string
@@ -107,6 +109,12 @@ export interface InterviewConfig {
   minAnswers: number
   maxAnswers: number
   savedAt?: string
+}
+
+/** One-shot question HR pushes during a live C4 interview (consumed on candidate's next turn). */
+export interface HrInjectedQuestion {
+  textEn: string
+  queuedAt: string
 }
 
 export interface InterviewTurn {

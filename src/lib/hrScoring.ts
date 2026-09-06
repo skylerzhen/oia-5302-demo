@@ -27,10 +27,25 @@ export const DEFAULT_PILLAR_WEIGHTS: PillarWeights = {
 
 const WEIGHTS_STORAGE_KEY = 'oia5302-hr-pillar-weights'
 const JD_WEIGHTS_STORAGE_KEY = 'oia5302-hr-jd-dimension-weights'
+export const SCORING_SYNC_EVENT = 'oia5302-scoring-sync'
+
+function readScoringStorage(key: string): string | null {
+  const fromLocal = localStorage.getItem(key)
+  if (fromLocal) return fromLocal
+  const legacy = sessionStorage.getItem(key)
+  if (!legacy) return null
+  localStorage.setItem(key, legacy)
+  sessionStorage.removeItem(key)
+  return legacy
+}
+
+function notifyScoringSync() {
+  window.dispatchEvent(new Event(SCORING_SYNC_EVENT))
+}
 
 export function loadJdDimensionWeights(): JdDimensionWeight[] {
   try {
-    const raw = sessionStorage.getItem(JD_WEIGHTS_STORAGE_KEY)
+    const raw = readScoringStorage(JD_WEIGHTS_STORAGE_KEY)
     if (!raw) return DEFAULT_JD_DIMENSION_WEIGHTS.map((d) => ({ ...d }))
     const parsed = JSON.parse(raw) as Partial<JdDimensionWeight>[]
     if (!Array.isArray(parsed)) return DEFAULT_JD_DIMENSION_WEIGHTS.map((d) => ({ ...d }))
@@ -48,7 +63,8 @@ export function loadJdDimensionWeights(): JdDimensionWeight[] {
 }
 
 export function saveJdDimensionWeights(weights: JdDimensionWeight[]) {
-  sessionStorage.setItem(JD_WEIGHTS_STORAGE_KEY, JSON.stringify(weights))
+  localStorage.setItem(JD_WEIGHTS_STORAGE_KEY, JSON.stringify(weights))
+  notifyScoringSync()
 }
 
 export function jdWeightTotal(weights: JdDimensionWeight[]): number {
@@ -88,7 +104,7 @@ export function dimensionWeightedContribution(d: MatchDimension): number {
 
 export function loadPillarWeights(): PillarWeights {
   try {
-    const raw = sessionStorage.getItem(WEIGHTS_STORAGE_KEY)
+    const raw = readScoringStorage(WEIGHTS_STORAGE_KEY)
     if (!raw) return { ...DEFAULT_PILLAR_WEIGHTS }
     const parsed = JSON.parse(raw) as Partial<PillarWeights>
     return {
@@ -102,7 +118,8 @@ export function loadPillarWeights(): PillarWeights {
 }
 
 export function savePillarWeights(weights: PillarWeights) {
-  sessionStorage.setItem(WEIGHTS_STORAGE_KEY, JSON.stringify(weights))
+  localStorage.setItem(WEIGHTS_STORAGE_KEY, JSON.stringify(weights))
+  notifyScoringSync()
 }
 
 function clampWeight(value: unknown, fallback: number): number {

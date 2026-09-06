@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>OIA 智能招聘平台 操作指南</title>
+<style>
+:root{--navy:#0b1f3f;--navy-soft:#1a3a5c;--ink:#1e293b;--muted:#64748b;--line:#e2e8f0;--canvas:#f1f5f9;--card:#fff;--accent:#2563eb;--sidebar:280px}
+*{box-sizing:border-box}html{scroll-behavior:smooth}
+body{margin:0;font-family:Inter,system-ui,"Segoe UI",sans-serif;color:var(--ink);background:var(--canvas);line-height:1.65;font-size:15px}
+.layout{display:grid;grid-template-columns:var(--sidebar) 1fr;min-height:100vh}
+.sidebar{position:sticky;top:0;height:100vh;overflow:auto;background:linear-gradient(180deg,#071428 0%,var(--navy) 100%);color:#e8eef7;padding:1.25rem 1rem 2rem}
+.sidebar-brand{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:#94a8c0;margin-bottom:.35rem}
+.sidebar h1{font-family:"Source Serif 4",Georgia,serif;font-size:1.12rem;line-height:1.35;margin:0 0 1rem;color:#fff;font-weight:600}
+.sidebar-meta{font-size:.78rem;color:#b8c9de;margin-bottom:1.25rem;line-height:1.5}.sidebar-meta a{color:#93c5fd}
+.nav-group{margin-bottom:1rem}.nav-group-title{font-size:.68rem;text-transform:uppercase;letter-spacing:.07em;color:#7d93ad;margin:0 0 .45rem}
+.nav-group ul{list-style:none;margin:0;padding:0}.nav-group a{display:block;padding:.35rem .5rem;border-radius:6px;color:#dce6f3;text-decoration:none;font-size:.82rem}
+.nav-group a:hover{background:rgba(255,255,255,.08);color:#fff}
+.sidebar-foot{margin-top:1.5rem;padding-top:1rem;border-top:1px solid rgba(255,255,255,.12);font-size:.72rem;color:#7d93ad}
+main{padding:1.25rem 0 4rem}
+.hero{max-width:980px;margin:0 2rem 1.5rem;padding:1.5rem 1.75rem;background:linear-gradient(135deg,#0b1f3f 0%,#1e4a7a 100%);color:#f8fafc;border-radius:16px}
+.hero h2{font-family:"Source Serif 4",Georgia,serif;margin:0 0 .5rem;font-size:1.55rem}
+.hero p{margin:0;color:#cbd5e1;font-size:.95rem;max-width:52rem}
+.hero-tags{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:1rem}.hero-tags span{font-size:.72rem;padding:.25rem .55rem;border-radius:999px;background:rgba(255,255,255,.12)}
+.content{max-width:980px;padding:0 2rem 2rem}
+.section-head{display:flex;align-items:center;gap:.65rem;margin:2rem 0 1rem;padding-bottom:.5rem;border-bottom:2px solid var(--line)}
+.section-dot{width:10px;height:10px;border-radius:999px}
+.section-head h3{font-family:"Source Serif 4",Georgia,serif;font-size:1.25rem;margin:0;color:var(--navy)}
+.block{background:var(--card);border:1px solid var(--line);border-radius:14px;margin-bottom:1rem;padding:1.15rem 1.25rem}
+.block h4{margin:0 0 .5rem;font-size:1rem;color:var(--navy-soft)}
+.block ul{margin:0;padding-left:1.15rem;color:#475569;font-size:.9rem}.block li{margin:.25rem 0}.step-list{counter-reset:step;margin:.5rem 0 0;padding:0;list-style:none}.step-list>li{counter-increment:step;position:relative;padding:.55rem 0 .55rem 2.4rem;border-bottom:1px dashed var(--line);font-size:.9rem;color:#475569}.step-list>li:last-child{border-bottom:none}.step-list>li::before{content:counter(step);position:absolute;left:0;top:.5rem;width:1.65rem;height:1.65rem;border-radius:999px;background:var(--navy);color:#fff;font-size:.75rem;font-weight:600;display:grid;place-items:center}.step-list>li strong{color:var(--navy-soft)}.callout{background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:.85rem 1rem;margin:.75rem 0;font-size:.88rem;color:#1e3a5f}.callout strong{color:#1d4ed8}.feature-tag{display:inline-block;font-size:.72rem;padding:.15rem .45rem;border-radius:999px;background:#eff6ff;color:#1d4ed8;margin-right:.35rem;font-weight:500}.block h5{margin:1rem 0 .35rem;font-size:.92rem;color:var(--navy)}
+table{width:100%;border-collapse:collapse;font-size:.88rem;margin-top:.5rem}
+th,td{border:1px solid var(--line);padding:.55rem .65rem;text-align:left}
+th{background:#f8fafc;color:var(--navy);font-size:.72rem;text-transform:uppercase}
+code{font-family:ui-monospace,Consolas,monospace;font-size:.82em;background:#f1f5f9;padding:.1rem .35rem;border-radius:4px}
+a{color:var(--accent)}.footer{max-width:980px;margin:2rem 2rem 0;padding-top:1rem;border-top:1px solid var(--line);font-size:.78rem;color:var(--muted)}
+@media(max-width:1080px){.layout{grid-template-columns:1fr}.sidebar{position:relative;height:auto}}
+@media print{.sidebar{display:none}.hero{background:#f8fafc;color:var(--ink);border:1px solid var(--line)}}
+</style>
+</head>
+<body>
+<div class="layout">
+<aside class="sidebar">
+<p class="sidebar-brand">UIS Cloud · OIA</p>
+<h1>OIA 智能招聘平台 操作指南</h1>
+<p class="sidebar-meta">2026-09-06<br/>线上：<a href="https://oia-recruitment.uiscloud.cc">oia-recruitment.uiscloud.cc</a></p>
+<div class="nav-group"><p class="nav-group-title">目录</p><ul><li><a href="#testing">测试操作指南</a></li><li><a href="#interview-dual">一人双标签测面试</a></li><li><a href="#interview-dual">一人双标签测面试</a></li>
+<li><a href="#start">启动与环境</a></li><li><a href="#entry">三个入口</a></li><li><a href="#path">全流程参考路径</a></li>
+<li><a href="#candidate">候选人 C1–C6</a></li><li><a href="#hr">HR H1–H5</a></li><li><a href="#journey">Journey 验收</a></li>
+<li><a href="#faq">常见问题</a></li></ul></div>
+</aside>
+<main>
+<header class="hero">
+<h2>平台操作指南</h2>
+<p>教测试员如何在<strong>一个浏览器、两个标签</strong>里分别扮演候选人与 HR，完成 Live 面试联动、推题、回放与终审验收。</p><div class="hero-tags"><span>双标签</span><span>C4 面试</span><span>Live monitor</span><span>HR 推题</span><span>H3 回放</span></div>
+</header>
+<div class="content">
+<div class="section-head" id="testing"><span class="section-dot" style="background:#2563eb"></span><h3>测试操作指南</h3></div><article class="block"><h4>开始之前</h4><ul><li>使用 <strong>Chrome 或 Edge</strong>，准备 <strong>两个标签页</strong>（同一浏览器，不要无痕/不同浏览器）</li><li>打开 <a href="https://oia-recruitment.uiscloud.cc">oia-recruitment.uiscloud.cc</a>，先点 <strong>Reset demo</strong> 清空旧数据</li><li>建议窗口 <strong>左右并排</strong>：左 = 候选人，右 = HR，方便来回切换</li><li>C4 面试需允许<strong>麦克风</strong>；API 冷启动时首轮连接可能需等 30–60 秒</li></ul></article><article class="block" id="interview-dual"><h4>一人模拟双端：Live 面试交互（重点）</h4><p class="callout"><strong>目标：</strong>同一个人交替操作两个标签，验证「候选人 C4 面试」与「HR H1 实时监控 / 推题」是否联动。</p><ol class="step-list"><li><strong>标签 A（候选人）</strong>：Landing → <strong>Candidate portal</strong> → MFA 登录（复制页面 6 位码）→ 进入 C1</li><li><strong>标签 B（HR）</strong>：新开标签，同一网址 → <strong>HR / Recruiter portal</strong> → MFA 登录 → 进入 H1 Review queues</li><li><strong>标签 A</strong>：C1 上传 CV（或点 Demo sample 加载 Sara）→ C2 <strong>Submit profile</strong></li><li><strong>标签 B</strong>：切回 H1，应看到该申请人出现在队列；若无，刷新 B 或等 2 秒再切回</li><li><strong>标签 A</strong>：进入 C3 Technical assessment，答完并 <strong>Submit</strong></li><li><strong>标签 A</strong>：进入 <strong>C4 AI interview</strong>，先<strong>不要点 Start</strong></li><li><strong>标签 B</strong>：在 H1 页面向下找到 <strong>Live interview monitor</strong>（此时可能显示 Waiting for candidate to start C4…）</li><li><strong>标签 A</strong>：点击 <strong>Start interview</strong>，允许麦克风；等 Avatar 视频出现</li><li><strong>标签 B</strong>：Live monitor 应变为 <strong>Live</strong>，并开始出现 Avatar / Candidate 文字行</li><li><strong>标签 A</strong>：用<strong>语音或文字</strong>回答第一轮问题，等 Avatar 说完再答</li><li><strong>标签 B</strong>：确认 transcript 新增 Candidate 行（与 A 侧同步，无需刷新）</li><li><strong>标签 B</strong>：在 <strong>Push next avatar question</strong> 输入英文问题，如 <code>Tell me about your experience with document automation.</code> → 点 <strong>Queue for next turn</strong></li><li><strong>标签 A</strong>：继续下一轮；Avatar 应优先念出 B 刚推送的问题（非默认题库时以 HR 题为准）</li><li>重复 10–13 共 <strong>2–3 轮</strong>，直至 C4 显示面试完成或出现 Submit / 进入 C5</li><li><strong>标签 B</strong>：Live monitor 显示 Submitted → 点 <strong>Open full replay (H3)</strong> 或侧栏进 H3</li><li><strong>标签 B</strong>：H3 检查逐轮 transcript、维度分、<strong>Play recording</strong>（TTS 重演）</li><li><strong>标签 A</strong>：进入 C5 Match insights，确认有三柱分数</li></ol></article><article class="block"><h4>窗口切换技巧（一个人测时不乱）</h4><ul><li><strong>Alt+Tab / Ctrl+Tab</strong> 在两个标签间切换；HR 侧以「看 transcript 是否多一行」为同步信号</li><li>操作顺序永远是：<strong>A 行动 → B 验证 → B 行动（推题）→ A 继续</strong></li><li>不要在面试中途对 B 标签点 <strong>Load demo application</strong>，会覆盖 A 正在进行的会话</li><li>若 B 一直空白：确认同浏览器、A 已 Submit profile + 完成 C3、C4 已 Start 且至少有一轮 turn</li></ul></article><article class="block"><h4>快捷测面试（跳过 C1–C3）</h4><ul><li><strong>标签 A</strong>：Landing → Journey test channel → MFA → 点 <strong>Jump to C4 interview ready</strong></li><li><strong>标签 B</strong>：HR portal → H1 → <strong>Load demo application</strong>（仅当 A 尚未开始时用于预载；双端联测时优先让 A 自己推进）</li><li>然后直接从上面步骤 7 开始测 Live monitor + 推题</li></ul></article><article class="block"><h4>其他必测项（清单）</h4><ul><li><strong>双端记录一致</strong>：A 填完 C2 后 B 的 H1 队列与 CV 摘要更新</li><li><strong>断线恢复</strong>：C4 视频黑屏时点 Reconnect video；仍失败则 Restart interview</li><li><strong>H2 初筛</strong>：Shortlist / Decline + 理由</li><li><strong>H4 终审</strong>：调权重 → Hire/Reject → A 的 C6 显示结果</li><li><strong>Journey J12</strong>：双标签分别打开 C6 与 H5，确认同一申请人状态</li></ul></article><article class="block"><h4>测试通过标准（面试段）</h4><ul><li>B 的 Live monitor 在 C4 进行中显示 Live，且每轮 A 回答后 transcript 增加</li><li>HR Queue 的英文题能在 A 下一轮被 Avatar 问到</li><li>面试结束后 H3 有完整 turns，Play recording 可播放</li><li>A 的 C5、B 的 H3 对应同一申请人、同一轮次内容</li></ul></article><div class="section-head" id="start"><span class="section-dot" style="background:#0b1f3f"></span><h3>1. 启动与环境</h3></div>
+<article class="block"><h4>线上演示</h4><ul>
+<li>前端：<a href="https://oia-recruitment.uiscloud.cc">oia-recruitment.uiscloud.cc</a></li>
+<li>API：<code>oia-5302-demo.onrender.com</code>（LiveAvatar / LLM / TTS）</li>
+<li>C4 数字人面试需联网；离线模式仅 UI</li>
+</ul></article>
+<article class="block"><h4>浏览器建议</h4><ul>
+<li>Chrome / Edge 最新版；C4 需允许麦克风</li>
+<li>双 portal 演示开<strong>两个标签页</strong>，数据自动同步</li>
+</ul></article>
+<div class="section-head" id="entry"><span class="section-dot" style="background:#1e4a7a"></span><h3>2. 三个入口</h3></div>
+<article class="block"><h4>Landing 选择</h4><ul>
+<li><strong>Candidate portal</strong> — 候选人 C1–C6</li>
+<li><strong>HR / Recruiter portal</strong> — 招聘官 H1–H5</li>
+<li><strong>Journey test channel</strong> — UIS 12 步验收导航</li>
+</ul></article>
+<article class="block"><h4>Mock 登录</h4><ul>
+<li>预填账号 → <strong>Continue to MFA</strong></li>
+<li>复制页面上 6 位验证码 → <strong>Verify and enter portal</strong></li>
+<li><strong>Exit portal</strong> 回 Landing，不清空申请数据</li>
+<li><strong>Reset demo</strong> 清空会话，演示前遇旧数据可先 Reset</li>
+</ul></article>
+<div class="section-head" id="path"><span class="section-dot" style="background:#2b5878"></span><h3>3. 全流程参考路径</h3></div>
+<article class="block"><h4>完整流程概览（面试段见上文步骤）</h4><ul>
+<li>标签 A：Candidate → C1 上传 CV → C2 确认档案 → C3 测评 → C4 面试</li>
+<li>标签 B：HR → H1 看队列；C4 进行中用 Live interview monitor 看 transcript</li>
+<li>面试后：B → H3 回放；A → C5 综合分；HR → H2/H4 决策；A → C6 结果</li>
+</ul></article>
+<article class="block"><h4>快捷路径</h4><ul>
+<li>Journey：<strong>Load demo application (Sara)</strong></li>
+<li><strong>Jump to C4 interview ready</strong></li>
+<li>HR H1：<strong>Load demo application</strong> 预载 Sara（可直跳 H3）</li>
+</ul></article>
+<div class="section-head" id="candidate"><span class="section-dot" style="background:#3a4668"></span><h3>4. 候选人步骤（C1–C6）</h3></div>
+<article class="block"><h4>C1 · Application</h4><ul><li>上传 PDF/HTML 样例 CV；解析完成后进入 C2</li></ul></article>
+<article class="block"><h4>C2 · Profile review</h4><ul><li>确认/编辑提取字段；Submit profile 后解锁 C3</li></ul></article>
+<article class="block"><h4>C3 · Technical assessment</h4><ul><li>固定 MCQ 题库自动评分</li></ul></article>
+<article class="block"><h4>C4 · AI interview</h4><ul>
+<li><strong>Start interview</strong> 建立 LiveAvatar 会话</li>
+<li>仅 Avatar 字幕 + 控件，不展示右侧历史 transcript 列表</li>
+<li>视频断开：<strong>Reconnect video</strong>；卡死：<strong>Restart interview</strong></li>
+<li>完成后解锁 C5</li>
+</ul></article>
+<article class="block"><h4>C5 · Match insights</h4><ul><li>三柱加权合成、六维度证据与改进建议</li></ul></article>
+<article class="block"><h4>C6 · Application status</h4><ul><li>HR H4 终审后显示 Hire/Reject 结果</li></ul></article>
+<div class="section-head" id="hr"><span class="section-dot" style="background:#4a3d5c"></span><h3>5. HR 步骤（H1–H5）</h3></div>
+<article class="block"><h4>H1 · Review queues</h4><ul>
+<li>排名、CV 摘要、Interview setup（JD + 自定义问题）</li>
+<li><strong>Live interview monitor</strong>：C4 实时文字 transcript</li>
+<li><strong>Queue for next turn</strong>：HR 推送下一道 Avatar 英文题</li>
+</ul></article>
+<article class="block"><h4>H2 · Screening decision</h4><ul><li>Shortlist / Decline + 书面理由（Decline 文案为 Below screening threshold）</li></ul></article>
+<article class="block"><h4>H3 · Interview review</h4><ul>
+<li>逐轮 transcript + LLM 评估</li>
+<li><strong>Play recording</strong> = TTS 重演文字，非原始录音</li>
+</ul></article>
+<article class="block"><h4>H4 · Final decision</h4><ul><li>调权重、Hire/Reject，同步至 C6</li></ul></article>
+<article class="block"><h4>H5 · Audit and export</h4><ul><li>审计时间线</li></ul></article>
+<div class="section-head" id="journey"><span class="section-dot" style="background:#5a4a48"></span><h3>6. Journey 验收通道</h3></div>
+<article class="block"><h4>12 步导航</h4>
+<table><thead><tr><th>ID</th><th>步骤</th><th>面</th><th>跳转</th></tr></thead><tbody>
+<tr><td>J01</td><td>Apply and upload CV</td><td>Candidate</td><td>C1</td></tr>
+<tr><td>J02</td><td>Confirm extracted profile</td><td>Candidate</td><td>C2</td></tr>
+<tr><td>J03</td><td>Review queues and JD config</td><td>HR</td><td>H1</td></tr>
+<tr><td>J04</td><td>Technical assessment</td><td>Candidate</td><td>C3</td></tr>
+<tr><td>J05</td><td>AI avatar interview</td><td>Candidate</td><td>C4</td></tr>
+<tr><td>J06</td><td>Interview recording review</td><td>HR</td><td>H3</td></tr>
+<tr><td>J07</td><td>Match score and tips</td><td>Candidate</td><td>C5</td></tr>
+<tr><td>J08</td><td>Shortlist or decline</td><td>HR</td><td>H2</td></tr>
+<tr><td>J09</td><td>Final human decision</td><td>HR</td><td>H4</td></tr>
+<tr><td>J10</td><td>Application status</td><td>Candidate</td><td>C6</td></tr>
+<tr><td>J11</td><td>Audit and demo complete</td><td>HR</td><td>H5</td></tr>
+<tr><td>J12</td><td>Dual-portal verification</td><td>Both</td><td>C6 + H5</td></tr>
+</tbody></table>
+</article>
+<article class="block"><h4>验收技巧</h4><ul>
+<li>每行右侧按钮可跳进对应 C/H 步骤</li>
+<li>状态列 complete / active / pending 反映当前 session</li>
+<li>J12 用于证明双 portal 读同一条申请记录</li>
+</ul></article>
+<div class="section-head" id="faq"><span class="section-dot" style="background:#6b5344"></span><h3>7. 常见问题</h3></div>
+<article class="block"><h4>HR 看不到候选人数据？</h4><ul>
+<li>同一浏览器双标签；刷新 HR 或重开 portal</li>
+<li>C4 进行中看 H1 Live monitor，不是 H3</li>
+</ul></article>
+<article class="block"><h4>C4 黑屏 / 无法开始？</h4><ul>
+<li>等 API 冷启动（约 30–60 秒）；Reconnect video 或 Restart interview</li>
+<li>检查麦克风权限与 LiveAvatar 配额</li>
+</ul></article>
+<article class="block"><h4>H3 回放与现场不同？</h4><ul><li>系统按文字记录重新播放，不存原始音视频</li></ul></article>
+<article class="block"><h4>顶栏 Offline 灯？</h4><ul><li>Landing 可模拟离线；C4 LiveAvatar 真实离线时不可用</li></ul></article>
+</div>
+<footer class="footer">UIS Cloud · OIA 智能招聘平台 · 2026-09-06</footer>
+</main>
+</div>
+</body>
+</html>

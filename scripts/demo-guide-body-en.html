@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>OIA Recruitment Platform — Test &amp; Operation Guide</title>
+<style>
+:root{--navy:#0b1f3f;--navy-soft:#1a3a5c;--ink:#1e293b;--muted:#64748b;--line:#e2e8f0;--canvas:#f1f5f9;--card:#fff;--accent:#2563eb;--sidebar:280px}
+*{box-sizing:border-box}html{scroll-behavior:smooth}
+body{margin:0;font-family:Inter,system-ui,"Segoe UI",sans-serif;color:var(--ink);background:var(--canvas);line-height:1.65;font-size:15px}
+.layout{display:grid;grid-template-columns:var(--sidebar) 1fr;min-height:100vh}
+.sidebar{position:sticky;top:0;height:100vh;overflow:auto;background:linear-gradient(180deg,#071428 0%,var(--navy) 100%);color:#e8eef7;padding:1.25rem 1rem 2rem}
+.sidebar-brand{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:#94a8c0;margin-bottom:.35rem}
+.sidebar h1{font-family:"Source Serif 4",Georgia,serif;font-size:1.12rem;line-height:1.35;margin:0 0 1rem;color:#fff;font-weight:600}
+.sidebar-meta{font-size:.78rem;color:#b8c9de;margin-bottom:1.25rem;line-height:1.5}.sidebar-meta a{color:#93c5fd}
+.nav-group{margin-bottom:1rem}.nav-group-title{font-size:.68rem;text-transform:uppercase;letter-spacing:.07em;color:#7d93ad;margin:0 0 .45rem}
+.nav-group ul{list-style:none;margin:0;padding:0}.nav-group a{display:block;padding:.35rem .5rem;border-radius:6px;color:#dce6f3;text-decoration:none;font-size:.82rem}
+.nav-group a:hover{background:rgba(255,255,255,.08);color:#fff}
+.sidebar-foot{margin-top:1.5rem;padding-top:1rem;border-top:1px solid rgba(255,255,255,.12);font-size:.72rem;color:#7d93ad}
+main{padding:1.25rem 0 4rem}
+.hero{max-width:980px;margin:0 2rem 1.5rem;padding:1.5rem 1.75rem;background:linear-gradient(135deg,#0b1f3f 0%,#1e4a7a 100%);color:#f8fafc;border-radius:16px}
+.hero h2{font-family:"Source Serif 4",Georgia,serif;margin:0 0 .5rem;font-size:1.55rem}
+.hero p{margin:0;color:#cbd5e1;font-size:.95rem;max-width:52rem}
+.hero-tags{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:1rem}.hero-tags span{font-size:.72rem;padding:.25rem .55rem;border-radius:999px;background:rgba(255,255,255,.12)}
+.content{max-width:980px;padding:0 2rem 2rem}
+.section-head{display:flex;align-items:center;gap:.65rem;margin:2rem 0 1rem;padding-bottom:.5rem;border-bottom:2px solid var(--line)}
+.section-dot{width:10px;height:10px;border-radius:999px}
+.section-head h3{font-family:"Source Serif 4",Georgia,serif;font-size:1.25rem;margin:0;color:var(--navy)}
+.block{background:var(--card);border:1px solid var(--line);border-radius:14px;margin-bottom:1rem;padding:1.15rem 1.25rem}
+.block h4{margin:0 0 .5rem;font-size:1rem;color:var(--navy-soft)}
+.block ul{margin:0;padding-left:1.15rem;color:#475569;font-size:.9rem}.block li{margin:.25rem 0}.step-list{counter-reset:step;margin:.5rem 0 0;padding:0;list-style:none}.step-list>li{counter-increment:step;position:relative;padding:.55rem 0 .55rem 2.4rem;border-bottom:1px dashed var(--line);font-size:.9rem;color:#475569}.step-list>li:last-child{border-bottom:none}.step-list>li::before{content:counter(step);position:absolute;left:0;top:.5rem;width:1.65rem;height:1.65rem;border-radius:999px;background:var(--navy);color:#fff;font-size:.75rem;font-weight:600;display:grid;place-items:center}.step-list>li strong{color:var(--navy-soft)}.callout{background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:.85rem 1rem;margin:.75rem 0;font-size:.88rem;color:#1e3a5f}.callout strong{color:#1d4ed8}.feature-tag{display:inline-block;font-size:.72rem;padding:.15rem .45rem;border-radius:999px;background:#eff6ff;color:#1d4ed8;margin-right:.35rem;font-weight:500}.block h5{margin:1rem 0 .35rem;font-size:.92rem;color:var(--navy)}
+table{width:100%;border-collapse:collapse;font-size:.88rem;margin-top:.5rem}
+th,td{border:1px solid var(--line);padding:.55rem .65rem;text-align:left}
+th{background:#f8fafc;color:var(--navy);font-size:.72rem;text-transform:uppercase}
+code{font-family:ui-monospace,Consolas,monospace;font-size:.82em;background:#f1f5f9;padding:.1rem .35rem;border-radius:4px}
+a{color:var(--accent)}.footer{max-width:980px;margin:2rem 2rem 0;padding-top:1rem;border-top:1px solid var(--line);font-size:.78rem;color:var(--muted)}
+@media(max-width:1080px){.layout{grid-template-columns:1fr}.sidebar{position:relative;height:auto}}
+@media print{.sidebar{display:none}.hero{background:#f8fafc;color:var(--ink);border:1px solid var(--line)}}
+</style>
+</head>
+<body>
+<div class="layout">
+<aside class="sidebar">
+<p class="sidebar-brand">UIS Cloud · OIA</p>
+<h1>OIA Recruitment Platform — Test Guide</h1>
+<p class="sidebar-meta">6 September 2026<br/>Live demo: <a href="https://oia-recruitment.uiscloud.cc">oia-recruitment.uiscloud.cc</a></p>
+<div class="nav-group"><p class="nav-group-title">Contents</p><ul>
+<li><a href="#testing">Test procedures</a></li>
+<li><a href="#interview-dual">Dual-tab live interview</a></li>
+<li><a href="#start">Environment</a></li>
+<li><a href="#entry">Three entry points</a></li>
+<li><a href="#path">End-to-end path</a></li>
+<li><a href="#candidate">Candidate C1–C6</a></li>
+<li><a href="#hr">HR H1–H5</a></li>
+<li><a href="#scoring">Scoring alignment</a></li>
+<li><a href="#journey">Journey acceptance</a></li>
+<li><a href="#faq">FAQ</a></li>
+</ul></div>
+<p class="sidebar-foot">Demo environment — simulated enterprise integrations</p>
+</aside>
+<main>
+<header class="hero">
+<h2>Platform Test &amp; Operation Guide</h2>
+<p>This guide explains how testers can use <strong>one browser with two tabs</strong> to play the roles of candidate and HR recruiter, and verify live interview coordination, question push, replay, and final decision workflows.</p>
+<div class="hero-tags"><span>Dual-tab</span><span>C4 interview</span><span>Live monitor</span><span>HR question push</span><span>H3 replay</span></div>
+</header>
+<div class="content">
+
+<div class="section-head" id="testing"><span class="section-dot" style="background:#2563eb"></span><h3>Test Procedures</h3></div>
+
+<article class="block"><h4>Before you begin</h4><ul>
+<li>Use <strong>Chrome or Edge</strong> with <strong>two tabs</strong> in the same browser window (do not use incognito mode or separate browsers)</li>
+<li>Open <a href="https://oia-recruitment.uiscloud.cc">oia-recruitment.uiscloud.cc</a> and click <strong>Reset demo</strong> to clear any previous session data</li>
+<li>Arrange windows <strong>side by side</strong>: left = Candidate, right = HR, for easier switching</li>
+<li>C4 AI interview requires <strong>microphone</strong> permission; the first connection after API cold start may take 30–60 seconds</li>
+<li>This is a <strong>demonstration environment</strong>. Jadarah and Oracle EBS integrations are simulated and labelled accordingly in the UI</li>
+</ul></article>
+
+<article class="block" id="interview-dual"><h4>Dual-tab live interview (primary test scenario)</h4>
+<p class="callout"><strong>Objective:</strong> One tester alternates between two tabs to verify that the candidate C4 AI interview and the HR H1 live monitor / question push stay synchronised.</p>
+<ol class="step-list">
+<li><strong>Tab A (Candidate)</strong>: Landing → <strong>Candidate portal</strong> → complete MFA sign-in (copy the 6-digit code shown on screen) → arrive at C1 Application</li>
+<li><strong>Tab B (HR)</strong>: Open a new tab to the same URL → <strong>HR / Recruiter portal</strong> → MFA sign-in → open H1 Review queues</li>
+<li><strong>Tab A</strong>: On C1, upload a CV (or click <strong>Demo sample</strong> to load Sara) → on C2 click <strong>Submit profile</strong></li>
+<li><strong>Tab B</strong>: Switch to H1 — the applicant should appear in the queue. If not, refresh Tab B or wait 2 seconds and switch back</li>
+<li><strong>Tab A</strong>: Complete C3 Technical assessment and click <strong>Submit</strong></li>
+<li><strong>Tab A</strong>: Open <strong>C4 AI interview</strong> — do <strong>not</strong> click Start yet</li>
+<li><strong>Tab B</strong>: Scroll down on H1 to <strong>Live interview monitor</strong> (may show “Waiting for candidate to start C4…”)</li>
+<li><strong>Tab A</strong>: Click <strong>Start interview</strong>, allow microphone access, and wait for the LiveAvatar video to appear</li>
+<li><strong>Tab B</strong>: Live monitor status should change to <strong>Live</strong>, with Avatar and Candidate transcript lines appearing</li>
+<li><strong>Tab A</strong>: Answer the first question by <strong>voice or text</strong>; wait for the avatar to finish speaking before responding</li>
+<li><strong>Tab B</strong>: Confirm a new Candidate line appears in the transcript (syncs automatically — no refresh needed)</li>
+<li><strong>Tab B</strong>: In <strong>Push next avatar question</strong>, enter an English question such as <code>Tell me about your experience with document automation.</code> → click <strong>Queue for next turn</strong></li>
+<li><strong>Tab A</strong>: Continue to the next turn — the avatar should ask the HR-pushed question (HR questions take priority over the default question bank)</li>
+<li>Repeat steps 10–13 for <strong>2–3 rounds</strong> until C4 shows interview complete or Submit / proceed to C5</li>
+<li><strong>Tab B</strong>: When Live monitor shows Submitted → click <strong>Open full replay (H3)</strong> or navigate to H3 via the sidebar</li>
+<li><strong>Tab B</strong>: On H3, review turn-by-turn transcript, dimension scores, and <strong>Play recording</strong> (text-to-speech replay)</li>
+<li><strong>Tab A</strong>: Open C5 Match insights and confirm the three-pillar composite score is displayed</li>
+</ol></article>
+
+<article class="block"><h4>Tab-switching tips (solo testing)</h4><ul>
+<li>Use <strong>Alt+Tab / Ctrl+Tab</strong> to switch between tabs; on the HR side, watch for a new transcript line as the sync signal</li>
+<li>Follow this rhythm: <strong>A acts → B verifies → B acts (push question) → A continues</strong></li>
+<li>Do not click <strong>Load demo application</strong> on Tab B mid-interview — it will overwrite the active session</li>
+<li>If Tab B stays blank: confirm same browser, Tab A has submitted profile + completed C3, C4 has started, and at least one turn has completed</li>
+</ul></article>
+
+<article class="block"><h4>Quick interview test (skip C1–C3)</h4><ul>
+<li><strong>Tab A</strong>: Landing → Journey test channel → MFA → click <strong>Jump to C4 interview ready</strong></li>
+<li><strong>Tab B</strong>: HR portal → H1 → <strong>Load demo application</strong> (preload only if Tab A has not started; for dual-tab tests, let Tab A drive the flow)</li>
+<li>Then begin from step 7 above to test Live monitor and question push</li>
+</ul></article>
+
+<article class="block"><h4>Additional required checks</h4><ul>
+<li><strong>Cross-portal consistency</strong>: After Tab A completes C2, Tab B H1 queue and CV summary update</li>
+<li><strong>Connection recovery</strong>: If C4 video goes black, click Reconnect video; if that fails, use Restart interview</li>
+<li><strong>H2 screening</strong>: Shortlist or Decline with written rationale</li>
+<li><strong>H4 final decision</strong>: Adjust pillar weights → Hire or Reject → Tab A C6 shows the outcome</li>
+<li><strong>Journey J12</strong>: Open C6 and H5 in separate tabs and confirm the same applicant status</li>
+<li><strong>Simulated integrations</strong>: After profile submit, assessment, or final decision, check the sidebar integration panel for Jadarah / Oracle EBS sync events (simulated endpoints)</li>
+</ul></article>
+
+<article class="block"><h4>Pass criteria (interview segment)</h4><ul>
+<li>Tab B Live monitor shows Live during C4, and transcript grows after each Tab A response</li>
+<li>HR-queued English questions are asked by the avatar on Tab A’s next turn</li>
+<li>After interview completion, H3 shows complete turns and Play recording works</li>
+<li>Tab A C5 and Tab B H3 refer to the same applicant and the same turn content</li>
+</ul></article>
+
+<div class="section-head" id="start"><span class="section-dot" style="background:#0b1f3f"></span><h3>1. Environment</h3></div>
+
+<article class="block"><h4>Hosted demo</h4><ul>
+<li>Web application: <a href="https://oia-recruitment.uiscloud.cc">oia-recruitment.uiscloud.cc</a></li>
+<li>API services: <code>oia-5302-demo.onrender.com</code> (LiveAvatar Lite, LLM scoring, TTS)</li>
+<li>C4 avatar interview requires network connectivity; offline mode supports UI walkthrough only</li>
+</ul></article>
+
+<article class="block"><h4>Browser recommendations</h4><ul>
+<li>Latest Chrome or Edge; microphone permission required for C4</li>
+<li>For dual-portal testing, open <strong>two tabs</strong> — application data syncs automatically via shared browser storage</li>
+</ul></article>
+
+<div class="section-head" id="entry"><span class="section-dot" style="background:#1e4a7a"></span><h3>2. Three Entry Points</h3></div>
+
+<article class="block"><h4>Landing page options</h4><ul>
+<li><strong>Candidate portal</strong> — candidate journey C1–C6 (Jadarah-style token sign-in, simulated)</li>
+<li><strong>HR / Recruiter portal</strong> — recruiter journey H1–H5 (OIA SSO + MFA, simulated)</li>
+<li><strong>Journey test channel</strong> — UIS 12-step acceptance navigator</li>
+</ul></article>
+
+<article class="block"><h4>Demo sign-in</h4><ul>
+<li>Credentials are pre-filled → click <strong>Continue to MFA</strong></li>
+<li>Copy the 6-digit verification code shown on screen → click <strong>Verify and enter portal</strong></li>
+<li><strong>Exit portal</strong> returns to Landing without clearing application data</li>
+<li><strong>Reset demo</strong> clears the session — use before testing if stale data is present</li>
+</ul></article>
+
+<div class="section-head" id="path"><span class="section-dot" style="background:#2b5878"></span><h3>3. End-to-End Reference Path</h3></div>
+
+<article class="block"><h4>Full workflow overview (see interview steps above for C4 detail)</h4><ul>
+<li>Tab A: Candidate → C1 upload CV → C2 confirm profile → C3 assessment → C4 interview</li>
+<li>Tab B: HR → H1 review queue; during C4 use Live interview monitor for real-time transcript</li>
+<li>After interview: Tab B → H3 replay; Tab A → C5 composite score; HR → H2/H4 decisions; Tab A → C6 outcome</li>
+</ul></article>
+
+<article class="block"><h4>Shortcut paths</h4><ul>
+<li>Journey channel: <strong>Load demo application (Sara)</strong></li>
+<li><strong>Jump to C4 interview ready</strong></li>
+<li>HR H1: <strong>Load demo application</strong> to preload Sara (can jump directly to H3 for replay testing)</li>
+</ul></article>
+
+<div class="section-head" id="candidate"><span class="section-dot" style="background:#3a4668"></span><h3>4. Candidate Steps (C1–C6)</h3></div>
+
+<article class="block"><h4>C1 · Application</h4><ul><li>Upload a sample CV (PDF/HTML); after parsing completes, proceed to C2</li></ul></article>
+<article class="block"><h4>C2 · Profile review</h4><ul><li>Review and edit extracted fields; Submit profile unlocks C3 and triggers simulated Jadarah profile write-back</li></ul></article>
+<article class="block"><h4>C3 · Technical assessment</h4><ul><li>Fixed multiple-choice question bank with automatic scoring; result syncs to simulated Jadarah assessment endpoint</li></ul></article>
+<article class="block"><h4>C4 · AI interview (LiveAvatar Lite)</h4><ul>
+<li><strong>Start interview</strong> establishes a LiveAvatar Lite session</li>
+<li>Candidate view shows avatar video, current caption, and controls only — no side transcript history panel</li>
+<li>If video disconnects: <strong>Reconnect video</strong>; if session stalls: <strong>Restart interview</strong></li>
+<li>Completion unlocks C5</li>
+</ul></article>
+<article class="block"><h4>C5 · Match insights</h4><ul><li>Three-pillar weighted composite, six-dimension evidence, and improvement recommendations</li></ul></article>
+<article class="block"><h4>C6 · Application status</h4><ul><li>Displays Hire/Reject outcome after HR H4 final decision</li></ul></article>
+
+<div class="section-head" id="hr"><span class="section-dot" style="background:#4a3d5c"></span><h3>5. HR Steps (H1–H5)</h3></div>
+
+<article class="block"><h4>H1 · Review queues</h4><ul>
+<li>Ranked applicant list, CV summary, Interview setup (JD + custom questions)</li>
+<li><strong>Live interview monitor</strong>: real-time text transcript during C4</li>
+<li><strong>Queue for next turn</strong>: HR pushes the next avatar question in English</li>
+</ul></article>
+<article class="block"><h4>H2 · Screening decision</h4><ul><li>Shortlist or Decline with written rationale (Decline label: Below screening threshold)</li></ul></article>
+<article class="block"><h4>H3 · Interview review</h4><ul>
+<li>Turn-by-turn transcript plus LLM dimension evaluation</li>
+<li><strong>Play recording</strong> replays the text transcript via TTS — not original audio/video capture</li>
+</ul></article>
+<article class="block"><h4>H4 · Final decision</h4><ul><li>Adjust pillar weights, record Hire/Reject with rationale; outcome syncs to C6 and simulated Jadarah / Oracle EBS endpoints</li></ul></article>
+<article class="block"><h4>H5 · Audit and export</h4><ul><li>Audit timeline including integration sync events</li></ul></article>
+
+<div class="section-head" id="scoring"><span class="section-dot" style="background:#4a5568"></span><h3>6. Scoring Alignment</h3></div>
+
+<article class="block"><h4>What testers should verify</h4><ul>
+<li><strong>Three pillars</strong>: CV match, technical assessment, and interview performance — weights are shared between candidate C5 and HR H4</li>
+<li>When HR adjusts pillar weights on H4, candidate C5 composite score updates to match (same browser storage)</li>
+<li>Dimension-level scores on H3 and evidence bars on C5 should reference the same applicant and assessment data</li>
+<li>Technical assessment (C3) uses a fixed question bank with automatic scoring; interview dimensions (C4/H3) use LLM evaluation</li>
+</ul></article>
+
+<div class="section-head" id="journey"><span class="section-dot" style="background:#5a4a48"></span><h3>7. Journey Acceptance Channel</h3></div>
+
+<article class="block"><h4>12-step navigator</h4>
+<table><thead><tr><th>ID</th><th>Step</th><th>Portal</th><th>Jump target</th></tr></thead><tbody>
+<tr><td>J01</td><td>Apply and upload CV</td><td>Candidate</td><td>C1</td></tr>
+<tr><td>J02</td><td>Confirm extracted profile</td><td>Candidate</td><td>C2</td></tr>
+<tr><td>J03</td><td>Review queues and JD config</td><td>HR</td><td>H1</td></tr>
+<tr><td>J04</td><td>Technical assessment</td><td>Candidate</td><td>C3</td></tr>
+<tr><td>J05</td><td>AI avatar interview</td><td>Candidate</td><td>C4</td></tr>
+<tr><td>J06</td><td>Interview recording review</td><td>HR</td><td>H3</td></tr>
+<tr><td>J07</td><td>Match score and tips</td><td>Candidate</td><td>C5</td></tr>
+<tr><td>J08</td><td>Shortlist or decline</td><td>HR</td><td>H2</td></tr>
+<tr><td>J09</td><td>Final human decision</td><td>HR</td><td>H4</td></tr>
+<tr><td>J10</td><td>Application status</td><td>Candidate</td><td>C6</td></tr>
+<tr><td>J11</td><td>Audit and demo complete</td><td>HR</td><td>H5</td></tr>
+<tr><td>J12</td><td>Dual-portal verification</td><td>Both</td><td>C6 + H5</td></tr>
+</tbody></table>
+</article>
+
+<article class="block"><h4>Acceptance tips</h4><ul>
+<li>Each row has a jump button to the corresponding C/H step</li>
+<li>Status column (complete / active / pending) reflects the current session progress</li>
+<li>J12 confirms both portals read the same application record</li>
+</ul></article>
+
+<div class="section-head" id="faq"><span class="section-dot" style="background:#6b5344"></span><h3>8. Frequently Asked Questions</h3></div>
+
+<article class="block"><h4>HR portal does not show candidate data?</h4><ul>
+<li>Use two tabs in the same browser; refresh the HR tab or re-enter the portal</li>
+<li>During an active C4 interview, use H1 Live monitor — not H3</li>
+</ul></article>
+<article class="block"><h4>C4 black screen or cannot start?</h4><ul>
+<li>Wait for API cold start (approximately 30–60 seconds); try Reconnect video or Restart interview</li>
+<li>Confirm microphone permission and LiveAvatar Lite service availability</li>
+</ul></article>
+<article class="block"><h4>H3 replay differs from the live session?</h4><ul><li>Play recording replays the text transcript via TTS; original audio/video is not stored in this demo</li></ul></article>
+<article class="block"><h4>Offline indicator in the top bar?</h4><ul><li>Landing page can simulate offline mode for UI testing; C4 LiveAvatar requires live connectivity</li></ul></article>
+<article class="block"><h4>Are Jadarah and Oracle EBS connections live?</h4><ul><li>No — this demo uses simulated endpoints clearly labelled in the UI. Production deployment would connect to live Jadarah and Oracle EBS systems.</li></ul></article>
+
+</div>
+<footer class="footer">UIS Cloud · OIA Recruitment Platform · Demo test guide · 6 September 2026</footer>
+</main>
+</div>
+</body>
+</html>

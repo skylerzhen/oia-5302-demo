@@ -1,7 +1,7 @@
 import { EdgeTTS } from 'edge-tts-universal/browser'
 
 export const EDGE_VOICE_EN =
-  import.meta.env.VITE_EDGE_TTS_VOICE?.trim() || 'en-US-AvaMultilingualNeural'
+  import.meta.env.VITE_EDGE_TTS_VOICE?.trim() || 'en-US-AndrewMultilingualNeural'
 
 /** Browser-side Edge neural TTS — same voice family as cached opening MP3. */
 export async function synthesizeEdgeTtsBrowser(text: string): Promise<Blob | null> {

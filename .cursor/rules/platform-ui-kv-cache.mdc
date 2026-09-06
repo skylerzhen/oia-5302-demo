@@ -1,0 +1,99 @@
+---
+description: Platform UI redesign KV cache for incremental UI work on platform-ui branch
+alwaysApply: true
+---
+
+# Platform UI - Agent KV Cache (5302)
+
+**Read this first** on branch `platform-ui`. Work **incrementally** - one screen or token layer per commit.
+
+## Identity
+
+| Key | Value |
+|-----|-------|
+| Repo | skylerzhen/oia-5302-demo @ C:\Users\Admin\Projects\oia-5302-demo |
+| UI branch | **platform-ui** |
+| Stable | main @ v0.4.1 - do not break live demo |
+| Spec | Recruitment Interface Reference.pdf |
+| Full brief | docs/demo-5302/platform-ui-agent-brief.md |
+
+## North star
+
+Refactor UI to sovereign navy while preserving **one application record** across:
+
+1. **Candidate Platform** - upload, confirm CV, interview, score
+2. **HR Platform** - pipeline, detail, playback, hire/reject
+3. **Journey Test Channel** - nav only; NOT a third data copy
+
+12-step state machine stays in DemoContext; UI = presentation + layout.
+
+## Meeting deliverables
+
+- UI/UX design doc, combined user journey, WOW list
+- HR interview recordings (Shawn, Sam)
+- Candidate score + derivation (e.g. 87)
+- Dual-portal test on same record
+
+## Design tokens (non-negotiable)
+
+```
+navy900 #0B1A2F sidebar | navyPrimary #13315C primary
+canvas #F4F7FB | hairline #E3E8F0 | radius max 6px
+Source Serif 4 titles | Inter 13px body | IBM Plex Mono scores
+Evidence Review: source LEFT, extracted RIGHT
+One navy primary CTA per view | EN+AR RTL | NO CJK
+```
+
+Tokens partially in src/App.css - align to PDF; no teal/green primary.
+
+## Screen map
+
+| PDF | Component(s) |
+|-----|--------------|
+| 06 Evidence Review | CvReviewPanel, InterviewReviewPanel (highest reuse) |
+| 03 Command Centre | ScoreSummaryPanel |
+| 05 Bulk Upload | CandidatePortal C1 |
+| 08 Review Queues | HrPortal, MatchDashboard |
+| Journey | CandidateJourneyPanel (nav only) |
+
+## P0 (verify after merge)
+
+Single record, config-to-candidate, recording playback, score consistency, interview cap, no CJK, hire/reject, upload ID - on main v0.4.1.
+
+## Deploy - do not regress
+
+| Surface | URL / notes |
+|---------|-------------|
+| Frontend | https://oia-recruitment.uiscloud.cc |
+| API | https://oia-5302-demo.onrender.com |
+| Build | llm.env: VITE_API_SECRET, VITE_LLM_API_URL - never commit |
+| LiveAvatar | e9844e6d-847e-4964-a92b-7ecd066f69df |
+| TTS | onyx (male) on Render |
+
+```bash
+npm run dev
+npm run deploy:surge
+```
+
+## Work order
+
+1. Tokens + fonts (App.css) - done
+2. Shell 235px sidebar (Layout.tsx) - done
+3. Evidence Review layout - done
+4. Candidate score UI - done
+5. Mock sign-in/2FA - done
+6. HR Review Queues - done
+7. User journey markdown - done
+
+All incremental UI steps complete on platform-ui.
+
+## Pitfalls
+
+- dev-with-api.mjs: no npx spawn; no shell:true on spaced paths
+- Surge without VITE_API_SECRET -> LiveAvatar 401
+- PCM ~1s chunks; no waitForLiveAvatarPlayback
+- Render: edit existing OPENAI_TTS_VOICE row
+
+## When user says start
+
+Pick slice 1-7. Default: tokens+shell, then Evidence Review (06).
