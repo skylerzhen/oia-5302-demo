@@ -28,6 +28,21 @@ Walk the **same application record** through Candidate + HR and mark each UIS P0
 
 Return a filled copy of **§8 Report template**.
 
+### Honest limit (read before you start)
+
+This file is **not** a human substitute. A Cursor / Playwright agent with a real browser can walk the **click path** (C1→C6 and H1→H5) and score most P0 rows. It cannot do what a person does with lungs, eyes, and an OS permission prompt.
+
+| Like a human? | Item |
+|---------------|------|
+| Yes, if you click | Sign-in, MFA (tap the 6-digit code), Sara sample, C2/C3, typed C4 answers, HR blueprint, shortlist, hire, labels |
+| Partial | Dual-tab same record (must **open a new tab to the same URL**, never Duplicate Tab, never **Exit portal**) |
+| Usually no | Speak into the mic, grant camera/mic like a person, judge LiveAvatar lip-sync, 10 spoken rounds |
+| Forbidden as a “pass” | Grep source / read `llm-handlers.mjs` and mark ②/③ pass. Code-only notes go in the report as **code**, not **demo** |
+
+If you have **no browser tool**, stop after `npm run build` / `check-cjk` and mark UI rows **blocked**, not pass.
+
+Use **§3b Agent click script** as the mechanical path. Use §5 only as the scoring rubric.
+
 ---
 
 ## 2. Environment
@@ -83,6 +98,39 @@ Session is **one record** in `localStorage` key `oia-5302-demo-session`. Intervi
 3. MFA: tap the 6-digit simulated authenticator code so it fills the field → submit.  
    Candidate opens on **C1** even if an older step is in session. Resume via the left sidebar.
 
+### 3b. Agent click script (typed C4, max=2)
+
+Open **production** https://oia-recruitment.uiscloud.cc **or** local http://localhost:5173. Stay **Connected** (do not toggle offline). Browser: Chromium/Edge.
+
+**Never click `Exit portal`.** That is full reset (`logout`), not “back to landing”.  
+**Never Duplicate Tab.** Duplicate copies in-memory `role`, so both views stay Candidate. Dual-portal = **new tab** → same URL → landing (role is not restored from storage).
+
+Hard waits: after each primary action wait until the heading/button in the next step is visible (up to 15s). After **Send typed answer**, wait until the button is no longer `Generating follow-up…` (up to 45s).
+
+1. Landing → **Reset demo (clear all progress)**.
+2. **Candidate portal** → **Continue to MFA** → click the large 6-digit **OIA Authenticator** code (it fills the field) → **Verify and enter portal**.
+3. You must be on **Application** (C1), not AI interview. Copy top-bar `OIA-5302-…` (Application ID).
+4. **New tab**, same URL. **HR / Recruiter portal** → **Continue to MFA** → tap code → **Verify and enter portal**. Confirm the same Application ID. Do **not** click **Load demo application**.
+5. Tab H, H1: **Interview blueprint & JD weights**. Set **Min answers before close** to `3` and **Max answers (hard stop)** to `5` (the inputs refuse values below 3 / 5 unless you force the DOM). On the first custom question, set Strong answer rubric to exactly `MUST cite OMR 4.2m`. **Save blueprint**. Expect flash `Interview blueprint saved — C4 will use this configuration.` Close the modal.
+6. Tab C, C1: under Demo samples click **Upload 01-sara-al-hinai-en.pdf · English electronic PDF** (do not use the OS file picker). **Confirm extraction** → **Confirm all fields** → **Continue to submit** → **Confirm & submit profile**.
+7. C2: **Accept & continue to assessment**.
+8. C3: for each of 4 MCQs click the **first radio**. **Submit exam** → **Continue to AI interview →**.
+9. C4: blueprint card must show `MUST cite OMR 4.2m`. If the camera/mic prompt appears, **Allow**. **Start interview**. Wait until the avatar question is on screen (2D fallback is OK).
+10. Click **Type instead**. Paste the C4 paragraph from §6. **Send typed answer**. Repeat until the page shows `Maximum 5 answers reached — submit to unlock scoring.` (or `Maximum 2` if you forced max=2). If the avatar stalls, click **Interrupt avatar** then type again. Then **Submit interview & view my score →**. Do **not** wait for a spoken conversation.
+11. C5 score page visible. Sidebar **Application status** (C6) still pending HR.
+12. Tab H: H3 interview review — transcript has your text; if a player exists, click a turn/evidence (seek is ③). Open DevTools Network before step 10 if you can: `follow-up` and `generate-assessment` POST bodies must contain `questionRubrics` and `MUST cite OMR 4.2m`.
+13. H2: leave reason empty → Shortlist stays disabled. Type `Shortlist for P0 test` → **Shortlist candidate**.
+14. H4: **Recommend hire** + reason `P0 agent hire` → confirm. Tab C C6 shows **Recommended for hire**.
+15. H1 table: a weak pool row says **Below screening threshold**, not `Disqualified`.
+
+**Separate short runs** (Reset demo first each time):
+
+- ⑧ fail-closed: C1 OS-upload a file named `random-offer.pdf` (not sara/khalid/noor/scan) → error, no Sara name.
+- ⑨ Khalid: Upload **02-khalid-al-balushi-en.docx** → Current role company `Oman Infrastructure Holdings`, title `Financial Reporting Analyst`, industry `Infrastructure holdings`, location `Muscat, Oman`.
+- ④ thin narrative: max=5, answers `I did some finance work.` only → H3/C5 must not “recommend hire” / praise competence.
+
+**③ recording:** if you could not Allow camera/mic, mark **blocked**, check audit for `Session recording unavailable`. Do not fail the whole P0 for that alone.
+
 ---
 
 ## 4. Fast smoke (about 20 minutes)
@@ -137,7 +185,7 @@ Network / model chain (this was the remaining gap; must re-verify):
 
 **Fail if:** rubric is visible in C4 but absent from those request bodies, or assessment ignores an unmet rubric with a hire-leaning sentence while scores are low.
 
-Hard-stop helper for later: set **max answers = 2**, save, then use ⑤. Restore 10 when done.
+Hard-stop helper for later: the Max answers input HTML min is **5**. Type `5` for a shorter run, or force the DOM to `2` if your tool allows it. Then use ⑤.
 
 ### ③ Real recording + playback
 
@@ -162,7 +210,7 @@ Use a thin-answer take (one-liners) vs the Sara script in `docs/demo-5302/c4-int
 Default copy after 10 answers:  
 `Maximum 10 answers reached — submit to unlock scoring.`
 
-Faster: blueprint **max answers = 2**, then the banner uses that number. Further Submit answer is blocked. **Submit interview** still works and sets `interviewCompleted` even if avatar/TTS is unhappy. C5 and C6 unlock.
+Faster: blueprint **max answers = 5** (UI floor), then the banner uses that number. Further Send typed answer is blocked. **Submit interview** still works and sets `interviewCompleted` even if avatar/TTS is unhappy. C5 and C6 unlock.
 
 ### ⑥ CJK clear
 
