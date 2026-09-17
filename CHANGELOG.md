@@ -8,13 +8,16 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Versioning foll
 ### Added
 - UIS P0: one application record across Candidate / HR / Journey tabs (`applicationId` immutable; HR no longer auto-seeds over a live candidate)
 - HR interview blueprint (fixed queue, strong-answer rubrics, min/max, dimensions, prohibited topics) reaches C4 **and** server LLM follow-up / assessment prompts
-- C4 camera+mic recording to IndexedDB with H3 replay and evidence seek
+- C4 camera+mic composite recording uploaded to the API (`POST /api/interview-recordings/:applicationId`); H3 loads from the server first
+- HR **Job settings** screen (`HC`) for interview blueprint + JD weights (replaces the H1 Recruiter configuration modal)
 - `npm run build` CJK + UTF-8 encoding gate (`scripts/check-cjk.mjs`)
-- Unknown CV upload fail-closed; Khalid current-role company/title/industry/location projected from work history
+- Unknown CV upload fail-closed; Khalid current-role company/title/industry/location projected from work history (fills missing / placeholder scalars)
 - Match label **Below screening threshold**; hire/reject require shortlist + written reason
 - Agent test playbook: [`docs/demo-5302/uis-p0-agent-test.md`](./docs/demo-5302/uis-p0-agent-test.md)
 
 ### Fixed
+- Recruiter configuration no longer cramped in an H1 modal — dedicated Job settings page
+- Interview recordings were browser-only (IndexedDB); they now persist on the demo API so HR can replay from another machine
 - UTF-16 LE source files (`interviewRecording.ts`, `pipelineHelpers.ts`, `check-cjk.mjs`) crashed the CJK gate with `SyntaxError`
 - Interview hard stop at max answers (`Maximum N answers reached — submit to unlock scoring`)
 

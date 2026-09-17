@@ -12,7 +12,7 @@ import { Layout } from './CandidatePortal'
 import { AuditTrailTable } from './AuditTrailTable'
 import { MatchDashboard } from './MatchDashboard'
 import { HrLiveInterviewPanel } from './HrLiveInterviewPanel'
-import { RecruiterConfigModal } from './RecruiterConfigModal'
+import { RecruiterJobSettings } from './RecruiterConfigModal'
 import { PRIMARY_CANDIDATE_ID } from '../data/candidates'
 import { FINANCE_JOB } from '../data/job'
 import { HR_STEPS } from '../lib/demo'
@@ -68,7 +68,6 @@ export function HrPortal() {
   const [journeyCandidate, setJourneyCandidate] = useState<string | null>(null)
   const [pillarWeights, setPillarWeights] = useState<PillarWeights>(() => loadPillarWeights())
   const [jdWeights, setJdWeights] = useState<JdDimensionWeight[]>(() => loadJdDimensionWeights())
-  const [configModalOpen, setConfigModalOpen] = useState(false)
   const [reviewFocusTurnId, setReviewFocusTurnId] = useState<string | null>(null)
 
   const filtered = useMemo(() => {
@@ -206,6 +205,7 @@ export function HrPortal() {
       s.id === 'H5' ? 'Record a final decision first' :
       undefined
     const complete =
+      s.id === 'HC' ? Boolean(interviewConfig.savedAt) :
       s.id === 'H1' ? readyForInterviewReview || pipeline.shortlisted || pipeline.disqualified :
       s.id === 'H2' ? pipeline.shortlisted || pipeline.disqualified :
       s.id === 'H3' ? pipeline.shortlisted && (step === 'H4' || step === 'H5' || pipeline.finalDecisionMade) :
@@ -278,14 +278,32 @@ export function HrPortal() {
         </div>
       )}
 
+      {step === 'HC' && (
+        <RecruiterJobSettings
+          interviewConfig={interviewConfig}
+          onInterviewConfigChange={setInterviewConfig}
+          onInterviewConfigSave={(saved) => {
+            log(
+              'Recruiter',
+              'Interview blueprint saved',
+              `${saved.customQuestions.length} custom - ${saved.enabledJdQuestionIds.length} JD - ${saved.mode}`,
+              'HC',
+            )
+          }}
+          jdWeights={jdWeights}
+          onJdWeightsChange={handleJdWeightsChange}
+          onBackToQueues={() => setStep('H1')}
+        />
+      )}
+
       {step === 'H1' && (
         <section className="stack review-queues-screen">
           <header className="section-head dashboard-head">
             <div>
               <h1>Review queues</h1>
               <p>
-                {FINANCE_JOB.title} - pipeline queue, evidence drill-down, and recruiter configuration
-                (split per PDF screen 08).
+                {FINANCE_JOB.title} - pipeline queue and evidence drill-down.
+                Job settings (interview blueprint and JD weights) live on their own screen.
               </p>
             </div>
             {!readyForInterviewReview && (
@@ -309,8 +327,8 @@ export function HrPortal() {
 
           <div className="review-queues-layout">
             <div className="review-queues-toolbar">
-              <button type="button" className="primary-outline" onClick={() => setConfigModalOpen(true)}>
-                <Settings2 size={16} /> Interview blueprint &amp; JD weights
+              <button type="button" className="primary-outline" onClick={() => setStep('HC')}>
+                <Settings2 size={16} /> Open job settings
               </button>
               <p className="muted tiny review-queues-config-summary">
                 {interviewConfigSummary(interviewConfig)} · JD weight total {jdWeightTotal(jdWeights)}
@@ -343,23 +361,6 @@ export function HrPortal() {
               />
             </div>
           </div>
-
-          <RecruiterConfigModal
-            open={configModalOpen}
-            onClose={() => setConfigModalOpen(false)}
-            interviewConfig={interviewConfig}
-            onInterviewConfigChange={setInterviewConfig}
-            onInterviewConfigSave={(saved) => {
-              log(
-                'Recruiter',
-                'Interview blueprint saved',
-                `${saved.customQuestions.length} custom - ${saved.enabledJdQuestionIds.length} JD - ${saved.mode}`,
-                'H1',
-              )
-            }}
-            jdWeights={jdWeights}
-            onJdWeightsChange={handleJdWeightsChange}
-          />
 
           <button type="button" className="primary" disabled={!selected} onClick={() => setStep('H2')}>Continue to shortlist / reject</button>
         </section>

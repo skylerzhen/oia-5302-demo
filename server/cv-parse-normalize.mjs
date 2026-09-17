@@ -127,7 +127,9 @@ function syncCurrentRoleFromWorkHistory(fields, workHistory) {
 
   return fields.map((field) => {
     const nextValue = patch[field.key]
-    if (!nextValue || field.value) return field
+    if (!nextValue) return field
+    const unfilled = field.status === 'missing' || !String(field.value ?? '').trim() || /^(missing|n\/a|na|-|—|none)$/i.test(String(field.value).trim())
+    if (!unfilled) return field
     return {
       ...field,
       value: nextValue,

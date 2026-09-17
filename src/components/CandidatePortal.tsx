@@ -18,6 +18,7 @@ import {
   RotateCcw,
   Scale,
   Shield,
+  Settings2,
   Target,
   Upload,
   UserCheck,
@@ -64,11 +65,13 @@ import {
 import {
   beginInterviewRecording,
   buildRecordingBlob,
+  acquireCandidateMedia,
   saveInterviewRecordingBlob,
   startInterviewMediaRecorder,
   stopMediaRecorder,
   waitForRecorderStop,
 } from '../lib/interviewRecording'
+import { CandidateCameraTile, type CandidateCameraStatus } from './CandidateCameraTile'
 import { formatLiveAvatarError } from '../lib/liveavatarErrors'
 import { unlockAudioPlayback } from '../lib/audioUnlock'
 import {
@@ -118,6 +121,7 @@ const CANDIDATE_NAV_ICONS: Record<string, LucideIcon> = {
 }
 
 const HR_NAV_ICONS: Record<string, LucideIcon> = {
+  HC: Settings2,
   H1: LayoutList,
   H2: UserCheck,
   H3: PlayCircle,
@@ -370,9 +374,14 @@ export function CandidatePortal() {
   const lastAnswerSubmitRef = useRef({ at: 0, text: '' })
   const c4ResumeKeyRef = useRef('')
   const interviewRecorderRef = useRef<MediaRecorder | null>(null)
+  const interviewRecorderStopExtrasRef = useRef<(() => void) | null>(null)
   const interviewRecordingChunksRef = useRef<Blob[]>([])
   const interviewRecordingTracksRef = useRef<MediaStreamTrack[]>([])
   const interviewRecordingStartedAtRef = useRef<number | null>(null)
+  const candidateVideoRef = useRef<HTMLVideoElement | null>(null)
+  const candidateStreamRef = useRef<MediaStream | null>(null)
+  const [candidateStream, setCandidateStream] = useState<MediaStream | null>(null)
+  const [candidateCameraStatus, setCandidateCameraStatus] = useState<CandidateCameraStatus>('idle')
   const [lastUploadInput, setLastUploadInput] = useState<{
     sampleId: string
     label: string
@@ -449,6 +458,8 @@ export function CandidatePortal() {
   }
 
   function stopInterviewRecordingTracks() {
+    interviewRecorderStopExtrasRef.current?.()
+    interviewRecorderStopExtrasRef.current = null
     stopMediaRecorder(interviewRecorderRef.current, interviewRecordingTracksRef.current)
     interviewRecorderRef.current = null
     interviewRecordingTracksRef.current = []
@@ -456,25 +467,59 @@ export function CandidatePortal() {
     interviewRecordingStartedAtRef.current = null
   }
 
+  function stopCandidateCamera() {
+    candidateStreamRef.current?.getTracks().forEach((track) => track.stop())
+    candidateStreamRef.current = null
+    setCandidateStream(null)
+    setCandidateCameraStatus('idle')
+  }
+
+  async function enableCandidateCamera() {
+    if (candidateStreamRef.current) return candidateStreamRef.current
+    const stream = await acquireCandidateMedia((message) => {
+      log('System', 'Session recording unavailable', message, 'C4')
+    })
+    if (!stream) {
+      setCandidateCameraStatus('blocked')
+      return null
+    }
+    candidateStreamRef.current = stream
+    setCandidateStream(stream)
+    const liveVideo = stream.getVideoTracks().some((track) => track.readyState === 'live')
+    setCandidateCameraStatus(liveVideo ? 'live' : 'blocked')
+    return stream
+  }
+
   async function startSessionRecording() {
     stopInterviewRecordingTracks()
-    const videoEl = getLiveAvatarVideoElement()
-    const recorder = await startInterviewMediaRecorder({
-      videoEl,
+    const stream = candidateStreamRef.current ?? await enableCandidateCamera()
+    const handle = await startInterviewMediaRecorder({
+      videoEl: getLiveAvatarVideoElement(),
+      candidateStream: stream,
+      candidateVideoEl: candidateVideoRef.current,
       onError: (message) => log('System', 'Session recording unavailable', message, 'C4'),
     })
-    if (!recorder) return
-    interviewRecorderRef.current = recorder
-    interviewRecordingTracksRef.current = recorder.stream.getTracks()
+    if (!handle) return
+    interviewRecorderRef.current = handle.recorder
+    interviewRecorderStopExtrasRef.current = handle.stopExtras
+    interviewRecordingTracksRef.current = handle.recorder.stream.getTracks()
     interviewRecordingChunksRef.current = []
     interviewRecordingStartedAtRef.current = Date.now()
-    beginInterviewRecording(recorder, interviewRecordingChunksRef.current)
+    beginInterviewRecording(handle.recorder, interviewRecordingChunksRef.current)
   }
+
+  useEffect(() => {
+    if (step !== 'C4') return
+    void enableCandidateCamera()
+    return () => stopCandidateCamera()
+  }, [step])
 
   async function persistInterviewRecording(turnCount: number) {
     const recorder = interviewRecorderRef.current
     const startedAt = interviewRecordingStartedAtRef.current ?? Date.now()
     await waitForRecorderStop(recorder)
+    interviewRecorderStopExtrasRef.current?.()
+    interviewRecorderStopExtrasRef.current = null
     stopMediaRecorder(null, interviewRecordingTracksRef.current)
     interviewRecorderRef.current = null
     interviewRecordingTracksRef.current = []
@@ -495,8 +540,20 @@ export function CandidatePortal() {
       turnCount,
       byteLength: blob.size,
     }
-    await saveInterviewRecordingBlob(appId, blob, meta)
-    setInterviewRecording(meta)
+    await saveInterviewRecordingBlob(appId, blob, meta).catch(() => undefined)
+    try {
+      await localAi.uploadInterviewRecording(appId, blob, meta)
+      setInterviewRecording({ ...meta, storedOn: 'server' })
+      log('System', 'Interview recording stored on server', `${Math.round(blob.size / 1024)} KB · ${appId}`, 'C4')
+    } catch (error) {
+      setInterviewRecording({ ...meta, storedOn: 'browser' })
+      log(
+        'System',
+        'Interview recording server upload failed',
+        error instanceof Error ? error.message : 'Upload failed',
+        'C4',
+      )
+    }
   }
 
   function restartInterview() {
@@ -1670,6 +1727,13 @@ export function CandidatePortal() {
                   viseme={avatar.isSpeaking ? avatar.viseme : undefined}
                   avatarMode={avatarMode}
                   liveAvatarSessionActive={interviewStarted && avatarMode === 'liveavatar'}
+                  overlay={(
+                    <CandidateCameraTile
+                      videoRef={candidateVideoRef}
+                      stream={candidateStream}
+                      status={candidateCameraStatus}
+                    />
+                  )}
                 />
                 <div className="card stack interview-controls">
                   {(avatar.isConnecting || avatar.isThinking) && avatar.statusMessage && (

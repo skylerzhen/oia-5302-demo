@@ -1,6 +1,7 @@
 import { HeyGenAvatarVideo } from './HeyGenAvatarVideo'
 import { LiveAvatarStage } from './LiveAvatarStage'
 import type { AvatarExpression } from '../types'
+import type { ReactNode } from 'react'
 
 interface AvatarPanelProps {
   speaking: boolean
@@ -10,6 +11,7 @@ interface AvatarPanelProps {
   avatarMode?: 'heygen' | 'liveavatar'
   liveAvatarSessionActive?: boolean
   liveAvatarContext?: 'candidate-interview' | 'hr-review'
+  overlay?: ReactNode
 }
 
 export function AvatarPanel({
@@ -18,6 +20,7 @@ export function AvatarPanel({
   avatarMode = 'liveavatar',
   liveAvatarSessionActive = false,
   liveAvatarContext = 'candidate-interview',
+  overlay,
 }: AvatarPanelProps) {
   return (
     <div className="avatar-panel">
@@ -34,6 +37,7 @@ export function AvatarPanel({
             />
           )}
         </div>
+        {overlay}
       </div>
 
       <div className="avatar-meta">

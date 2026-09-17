@@ -18,7 +18,7 @@ import {
 
 } from '../lib/liveavatarPlayer'
 
-import { loadInterviewRecordingBlob } from '../lib/interviewRecording'
+import { loadPlaybackRecording } from '../lib/interviewRecording'
 
 import {
 
@@ -142,7 +142,7 @@ export function InterviewReviewPanel({ turns, applicationId, recordingMeta, focu
 
 
 
-    void loadInterviewRecordingBlob(applicationId)
+    void loadPlaybackRecording(applicationId)
 
       .then((stored) => {
 
@@ -524,9 +524,11 @@ export function InterviewReviewPanel({ turns, applicationId, recordingMeta, focu
 
         <div className="card stack interview-session-recording">
 
-          <h4>Session recording (candidate + avatar A/V)</h4>
+          <h4>Session recording</h4>
 
           <p className="muted tiny">
+
+            Candidate inset + interviewer, loaded from the API server.{' '}
 
             {recordingMeta
 
@@ -589,6 +591,17 @@ export function InterviewReviewPanel({ turns, applicationId, recordingMeta, focu
           liveAvatarSessionActive={sessionActive && avatarMode === 'liveavatar'}
 
           liveAvatarContext="hr-review"
+
+          overlay={(
+            <div className="candidate-camera-pip blocked">
+              <span className="candidate-camera-tag">Candidate</span>
+              <p className="candidate-camera-fallback">
+                {sessionRecordingReady
+                  ? 'See session recording above for candidate inset'
+                  : 'No candidate camera on this replay'}
+              </p>
+            </div>
+          )}
 
         />
 

@@ -1,5 +1,5 @@
 import { withApiAuthBody } from './apiAuth'
-import type { ProfileTagGroup, WorkExperienceEntry } from '../types'
+import type { InterviewRecordingMeta, ProfileTagGroup, WorkExperienceEntry } from '../types'
 
 export type LocalAiMode = 'model' | 'adapter-fallback' | 'browser'
 
@@ -158,6 +158,23 @@ function apiUrl(path: string) {
   return `${API_BASE}${path}`
 }
 
+function recordingAuthQuery(extra: Record<string, string> = {}) {
+  const params = new URLSearchParams(extra)
+  const secret = import.meta.env.VITE_API_SECRET?.trim()
+  if (secret) params.set('apiKey', secret)
+  return params.toString()
+}
+
+async function fetchWithTimeout(path: string, init: RequestInit, timeoutMs: number) {
+  const controller = new AbortController()
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    return await window.fetch(apiUrl(path), { ...init, signal: controller.signal })
+  } finally {
+    window.clearTimeout(timer)
+  }
+}
+
 async function post<T>(path: string, payload: object, timeoutMs = 30_000): Promise<T> {
   const controller = new AbortController()
   const timer = window.setTimeout(() => controller.abort(), timeoutMs)
@@ -234,4 +251,35 @@ export const localAi = {
     post<{ ok: boolean }>('/api/liveavatar/session/stop', payload, 10_000),
   liveavatarSpeak: (payload: { sessionId: string; text: string }) =>
     post<LiveAvatarSpeakResult>('/api/liveavatar/speak', payload, 90_000),
+  uploadInterviewRecording: async (applicationId: string, blob: Blob, meta: InterviewRecordingMeta) => {
+    const query = recordingAuthQuery({ meta: JSON.stringify(meta) })
+    const response = await fetchWithTimeout(
+      `/api/interview-recordings/${encodeURIComponent(applicationId)}?${query}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': blob.type || 'video/webm' },
+        body: blob,
+      },
+      120_000,
+    )
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({})) as { error?: string }
+      throw new Error(detail.error ?? `Recording upload failed: ${response.status}`)
+    }
+    return response.json() as Promise<InterviewRecordingMeta>
+  },
+  downloadInterviewRecording: async (applicationId: string) => {
+    const query = recordingAuthQuery()
+    const suffix = query ? `?${query}` : ''
+    const response = await fetchWithTimeout(
+      `/api/interview-recordings/${encodeURIComponent(applicationId)}${suffix}`,
+      { method: 'GET' },
+      60_000,
+    )
+    if (response.status === 404) return null
+    if (!response.ok) throw new Error(`Recording download failed: ${response.status}`)
+    const blob = await response.blob()
+    if (!blob.size) return null
+    return blob
+  },
 }

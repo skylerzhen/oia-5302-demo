@@ -42,7 +42,7 @@ interface JourneyTestStep {
 const JOURNEY_TEST_STEPS: JourneyTestStep[] = [
   { id: 'J01', order: 1, label: 'Apply and upload CV', detail: 'Candidate submits CV for parsing', candidateStep: 'C1', surface: 'candidate' },
   { id: 'J02', order: 2, label: 'Confirm extracted profile', detail: 'Candidate reviews AI extraction', candidateStep: 'C2', surface: 'candidate' },
-  { id: 'J03', order: 3, label: 'Review queues and JD config', detail: 'HR ranks pool and sets interview blueprint', hrStep: 'H1', surface: 'hr' },
+  { id: 'J03', order: 3, label: 'Job settings then review queues', detail: 'HR saves interview blueprint on Job settings, then ranks the pool', hrStep: 'HC', surface: 'hr' },
   { id: 'J04', order: 4, label: 'Technical assessment', detail: 'Role MCQ auto-scored', candidateStep: 'C3', surface: 'candidate' },
   { id: 'J05', order: 5, label: 'AI avatar interview', detail: 'LiveAvatar segment with transcript', candidateStep: 'C4', surface: 'candidate' },
   { id: 'J06', order: 6, label: 'Interview recording review', detail: 'HR replays turns and LLM evaluation', hrStep: 'H3', surface: 'hr' },
@@ -77,7 +77,7 @@ function resolveJourneyStepStatus(
       return candidateStep === 'C2' ? 'active' : hasCv ? 'active' : 'pending'
     case 'J03':
       if (p.profileSubmitted && hasCv) return 'complete'
-      return hrStep === 'H1' ? 'active' : hasCv ? 'active' : 'pending'
+      return hrStep === 'HC' || hrStep === 'H1' ? 'active' : hasCv ? 'active' : 'pending'
     case 'J04':
       if (p.assessmentSubmitted) return 'complete'
       return candidateStep === 'C3' ? 'active' : p.profileSubmitted ? 'active' : 'pending'

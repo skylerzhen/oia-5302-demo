@@ -1,7 +1,7 @@
 export type UserRole = 'candidate' | 'hr' | 'journey'
 
 export type CandidateStepId = 'C1' | 'C2' | 'C3' | 'C4' | 'C5' | 'C6'
-export type HrStepId = 'H1' | 'H2' | 'H3' | 'H4' | 'H5'
+export type HrStepId = 'HC' | 'H1' | 'H2' | 'H3' | 'H4' | 'H5'
 export type StepId = CandidateStepId | HrStepId
 
 export type FieldStatus = 'parsed' | 'review' | 'missing'
@@ -182,4 +182,5 @@ export interface InterviewRecordingMeta {
   mimeType: string
   turnCount: number
   byteLength?: number
+  storedOn?: 'server' | 'browser'
 }

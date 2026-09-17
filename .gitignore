@@ -26,6 +26,10 @@ llm.env
 *.pem
 credentials.json
 
+# Interview recordings stored on the API server (not source)
+data/interview-recordings/*
+!data/interview-recordings/.gitkeep
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

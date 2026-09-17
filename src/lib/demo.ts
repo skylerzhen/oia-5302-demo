@@ -8,7 +8,8 @@ export const CANDIDATE_STEPS = [
 ] as const
 
 export const HR_STEPS = [
-  { id: 'H1', label: 'Review queues', hint: 'Rank pool and interview setup' },
+  { id: 'HC', label: 'Job settings', hint: 'Interview blueprint and JD weights' },
+  { id: 'H1', label: 'Review queues', hint: 'Rank pool and pipeline queue' },
   { id: 'H2', label: 'Screening decision', hint: 'Shortlist or decline with reason' },
   { id: 'H3', label: 'Interview review', hint: 'Recording and evaluation' },
   { id: 'H4', label: 'Final decision', hint: 'Weighted composite and hire/reject' },

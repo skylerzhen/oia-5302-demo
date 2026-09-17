@@ -166,12 +166,18 @@ function inferLocation(
   return address ?? ''
 }
 
+function isUnfilledRoleValue(field: ProfileField | undefined) {
+  if (!field) return true
+  const value = String(field.value ?? '').trim()
+  return field.status === 'missing' || !value || /^(missing|n\/a|na|-|—|none)$/i.test(value)
+}
+
 function projectMissingField(
   field: ProfileField | undefined,
   value: string,
   entry: Omit<WorkExperienceEntry, 'id'> | WorkExperienceEntry,
 ): { value: string; status: FieldStatus; evidence: string; source: string } | null {
-  if (!field || field.value.trim() || !value.trim()) return null
+  if (!value.trim() || !isUnfilledRoleValue(field)) return null
   return {
     value,
     status: entry.status ?? 'parsed',

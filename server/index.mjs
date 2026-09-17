@@ -20,17 +20,39 @@ import {
 } from './liveavatar-handlers.mjs'
 import { enforceRateLimit, BILLABLE_POST_ROUTES, GLOBAL_BILLABLE_LIMIT, LLM_RATE_LIMITS } from './rate-limit.mjs'
 import { enforceApiAuth, warnIfApiUnprotected } from './api-auth.mjs'
+import { saveInterviewRecording, loadInterviewRecording } from './interview-recordings.mjs'
 
 loadEnv()
 warnIfApiUnprotected()
 
 const PORT = Number(process.env.PORT ?? process.env.LLM_API_PORT ?? 8787)
 
+const RECORDING_MAX_BYTES = 80 * 1024 * 1024
+
 async function readJson(req) {
   const chunks = []
   for await (const chunk of req) chunks.push(chunk)
   const raw = Buffer.concat(chunks).toString('utf8')
   return raw ? JSON.parse(raw) : {}
+}
+
+async function readBuffer(req, maxBytes) {
+  const chunks = []
+  let n = 0
+  for await (const chunk of req) {
+    n += chunk.length
+    if (n > maxBytes) {
+      req.destroy()
+      throw new Error('Recording too large (max 80MB)')
+    }
+    chunks.push(chunk)
+  }
+  return Buffer.concat(chunks)
+}
+
+function recordingApplicationId(pathname) {
+  const match = pathname.match(/^\/api\/interview-recordings\/([^/]+)$/)
+  return match ? decodeURIComponent(match[1]) : null
 }
 
 function corsHeaders() {
@@ -87,7 +109,57 @@ createServer(async (req, res) => {
     return
   }
 
-  const routeKey = `${req.method} ${req.url?.split('?')[0]}`
+  const url = new URL(req.url ?? '/', 'http://localhost')
+  const pathname = url.pathname
+  const recordedId = recordingApplicationId(pathname)
+
+  if (recordedId) {
+    try {
+      enforceApiAuth(req, { apiKey: url.searchParams.get('apiKey') })
+      if (req.method === 'POST') {
+        const buffer = await readBuffer(req, RECORDING_MAX_BYTES)
+        let meta = {}
+        const metaRaw = url.searchParams.get('meta')
+        if (metaRaw) {
+          try { meta = JSON.parse(metaRaw) } catch { meta = {} }
+        }
+        const result = saveInterviewRecording(recordedId, buffer, {
+          ...meta,
+          mimeType: req.headers['content-type'] || meta.mimeType || 'video/webm',
+        })
+        sendJson(res, 200, result)
+        return
+      }
+      if (req.method === 'GET') {
+        const stored = loadInterviewRecording(recordedId)
+        if (!stored) {
+          sendJson(res, 404, { error: 'Recording not found' })
+          return
+        }
+        if (url.searchParams.get('meta') === '1') {
+          sendJson(res, 200, stored.meta)
+          return
+        }
+        res.writeHead(200, {
+          'Content-Type': stored.meta.mimeType || 'video/webm',
+          'Content-Length': stored.buffer.length,
+          'Cache-Control': 'private, max-age=60',
+          ...corsHeaders(),
+        })
+        res.end(stored.buffer)
+        return
+      }
+      sendJson(res, 405, { error: 'Method not allowed' })
+      return
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown server error'
+      const statusCode = message.startsWith('Unauthorized') ? 401 : 500
+      sendJson(res, statusCode, { error: message })
+      return
+    }
+  }
+
+  const routeKey = `${req.method} ${pathname}`
   const handler = routes[routeKey]
 
   if (!handler) {

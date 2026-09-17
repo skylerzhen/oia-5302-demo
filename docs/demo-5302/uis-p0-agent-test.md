@@ -76,7 +76,7 @@ npm run build
 
 **Browser:** Chromium or Edge. Two tabs, **same origin** (`localhost:5173`). Allow **camera + microphone** when C4 asks (or pre-allow for the origin). Incognito is fine if *both* tabs are in the same incognito window.
 
-**Reset:** landing page → **Reset demo (clear all progress)** before a clean run. This clears `localStorage` session. Interview recordings live in IndexedDB `oia-recruitment-demo-v1` and may survive until you clear site data.
+**Reset:** landing page → **Reset demo (clear all progress)** before a clean run. This clears `localStorage` session. Interview recordings are stored on the API (`data/interview-recordings/` on Render / local server). IndexedDB `oia-recruitment-demo-v1` is only a same-browser cache.
 
 **Do not** open `/?demo=c4` for the full P0 path (it skips C1–C3). That URL is only for a C4-only smoke.
 
@@ -111,7 +111,7 @@ Hard waits: after each primary action wait until the heading/button in the next 
 2. **Candidate portal** → **Continue to MFA** → click the large 6-digit **OIA Authenticator** code (it fills the field) → **Verify and enter portal**.
 3. You must be on **Application** (C1), not AI interview. Copy top-bar `OIA-5302-…` (Application ID).
 4. **New tab**, same URL. **HR / Recruiter portal** → **Continue to MFA** → tap code → **Verify and enter portal**. Confirm the same Application ID. Do **not** click **Load demo application**.
-5. Tab H, H1: **Interview blueprint & JD weights**. Set **Min answers before close** to `3` and **Max answers (hard stop)** to `5` (the inputs refuse values below 3 / 5 unless you force the DOM). On the first custom question, set Strong answer rubric to exactly `MUST cite OMR 4.2m`. **Save blueprint**. Expect flash `Interview blueprint saved — C4 will use this configuration.` Close the modal.
+5. Tab H, sidebar **Job settings** (or H1 **Open job settings**). Set **Min answers before close** to `3` and **Max answers (hard stop)** to `5` (the inputs refuse values below 3 / 5 unless you force the DOM). On the first custom question, set Strong answer rubric to exactly `MUST cite OMR 4.2m`. **Save blueprint**. Expect flash `Interview blueprint saved — C4 will use this configuration.` Then **Back to review queues**.
 6. Tab C, C1: under Demo samples click **Upload 01-sara-al-hinai-en.pdf · English electronic PDF** (do not use the OS file picker). **Confirm extraction** → **Confirm all fields** → **Continue to submit** → **Confirm & submit profile**.
 7. C2: **Accept & continue to assessment**.
 8. C3: for each of 4 MCQs click the **first radio**. **Submit exam** → **Continue to AI interview →**.
@@ -144,7 +144,7 @@ Use this if you only have one pass. Full matrix is §5.
 | 2 | Upload sample **01-sara-al-hinai-en.pdf**. Confirm extraction → Confirm all fields → Continue to submit → **Confirm & submit profile** | Fields filled; `cvUploadId` / application stays the same |
 | 3 | C2 **Accept & continue to assessment**. C3 answer all MCQs → Submit exam → **Continue to AI interview** | C4 shows HR blueprint + question list + “Strong answer: …” |
 | 4 | Tab H: HR → H1. Same Application ID. **Do not** click Load demo if data exists | Audit would show skip if you *do* click it. Queues show the live candidate, not a second record |
-| 5 | H1 **Interview blueprint & JD weights** → edit one custom question + its Strong answer rubric to a unique phrase (e.g. `MUST cite OMR 4.2m`) → **Save blueprint** | Flash: `Interview blueprint saved — C4 will use this configuration.` |
+| 5 | Sidebar **Job settings** (or H1 **Open job settings**) → edit one custom question + its Strong answer rubric to a unique phrase (e.g. `MUST cite OMR 4.2m`) → **Save blueprint** | Flash: `Interview blueprint saved — C4 will use this configuration.` |
 | 6 | Tab C: reload C4. Queue / rubric show the unique phrase | Config crossed portals |
 | 7 | DevTools → Network. Start interview (allow cam/mic). Answer once in English with a concrete metric. Submit the answer | `POST /api/local-ai/llm/follow-up` body contains `interviewConfig.questionRubrics` **and** your unique phrase |
 | 8 | After ≥ min answers (default 5) submit interview. C5/C6 unlock. Tab H → H3 | Same ID; replay or transcript present; dimension evidence can seek a turn |
@@ -171,7 +171,7 @@ Mark **P / F / B** (pass / fail / blocked). Evidence = screenshot, Application I
 
 UI chain:
 
-1. H1 → **Interview blueprint & JD weights**.
+1. Sidebar **Job settings** (or H1 **Open job settings**).
 2. Change: custom question text, **Strong answer** rubric, min/max answers, follow-up dimensions, prohibited topics.
 3. **Save blueprint**.
 4. Tab C C4: blueprint card lists the same questions, rubrics, dimensions.
@@ -191,9 +191,10 @@ Hard-stop helper for later: the Max answers input HTML min is **5**. Type `5` fo
 
 - Allow camera + microphone **before** Start interview.
 - Complete at least two candidate answers, then **Submit interview**.
-- H3: video (or audio) replay exists for this `applicationId`.
+- H3: video (or audio) replay exists for this `applicationId`. Caption should say it loaded from the API server.
 - Click a dimension evidence quote / turn → player seeks near that fragment (timestamped transcript).
-- IndexedDB: Application → Storage → `oia-recruitment-demo-v1` → `interview-recordings` keyed by Application ID.
+- Network: after C4 submit, `POST /api/interview-recordings/<Application ID>` returns 200. On H3, `GET` the same path returns video bytes (not 404).
+- IndexedDB `oia-recruitment-demo-v1` may still cache a copy on the recording browser; HR on another machine must use the server file.
 
 **Blocked (not a product fail) if:** permission was denied. Then check audit for `Session recording unavailable`. Re-run with permission granted. Silent no-blob + no audit = fail.
 
@@ -267,7 +268,7 @@ Keep **one** Application ID for the whole table.
 |------|-----|--------|------------|
 | 1 | C | Entry | Reset demo → Candidate sign-in + MFA |
 | 2 | H | Entry (new tab) | HR sign-in + MFA → H1. Confirm same ID, empty/live candidate, **no** auto seed |
-| 3 | H | H1 modal | Unique rubric + optional max=2 → Save blueprint |
+| 3 | H | Job settings | Unique rubric + optional max=5 → Save blueprint → Back to review queues |
 | 4 | C | C1 | Sara sample → Confirm extraction → Confirm all fields → Confirm & submit profile |
 | 5 | C | C2 | Accept & continue to assessment |
 | 6 | C | C3 | Answer MCQs → Submit exam → Continue to AI interview |
@@ -294,6 +295,7 @@ Weak contrast (for ④ / rubric miss): `I did some finance work and talked to my
 | Item | Note |
 |------|------|
 | Camera/mic deny | Recording silently skipped except audit `Session recording unavailable`. Pre-allow the origin. |
+| Server recording | Render free disk is ephemeral across deploys; a recording made before a Render rebuild may 404 until you record again. |
 | CJK gate | Content scan is `src` ts/tsx/css. `scripts/` handoff PDFs may contain CJK and are **out of** the content gate; UTF-16 in `scripts/server` **is** gated. |
 | Sample filename | `sara` / `khalid` / `noor` / `scan` substrings select fixtures. |
 | `?demo=c4` | Skips C1–C3. Not the P0 path. |

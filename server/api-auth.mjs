@@ -18,6 +18,15 @@ function extractBearer(req) {
   return ''
 }
 
+function extractQueryApiKey(req) {
+  try {
+    const url = new URL(req.url ?? '/', 'http://localhost')
+    return url.searchParams.get('apiKey')?.trim() || ''
+  } catch {
+    return ''
+  }
+}
+
 function tokensMatch(provided, expected) {
   if (!provided || !expected) return false
   const a = Buffer.from(provided)
@@ -32,7 +41,7 @@ export function enforceApiAuth(req, body = null) {
   if (!secret) return
 
   const fromBody = body && typeof body.apiKey === 'string' ? body.apiKey.trim() : ''
-  const token = extractBearer(req) || fromBody
+  const token = extractBearer(req) || fromBody || extractQueryApiKey(req)
   if (!tokensMatch(token, secret)) {
     throw new Error('Unauthorized — missing or invalid API key')
   }
