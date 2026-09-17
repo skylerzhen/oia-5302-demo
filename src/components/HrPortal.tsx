@@ -16,7 +16,7 @@ import { RecruiterConfigModal } from './RecruiterConfigModal'
 import { PRIMARY_CANDIDATE_ID } from '../data/candidates'
 import { FINANCE_JOB } from '../data/job'
 import { HR_STEPS } from '../lib/demo'
-import { interviewConfigSummary } from '../lib/interviewConfig'
+import { interviewConfigSummary, toInterviewConfigPayload } from '../lib/interviewConfig'
 import { localAi, type AssessmentResult } from '../lib/localAi'
 import {
   computeInterviewScoreFromDimensions,
@@ -33,6 +33,7 @@ import {
   type PillarWeights,
 } from '../lib/hrScoring'
 import { rankCandidates, type CandidateMatchWithTips } from '../lib/matching'
+import { applyBelowThreshold, applyShortlist, canReachFinalDecision, clampLlmRecommendationToScores } from '../lib/pipelineHelpers'
 import { loadLlmMatches } from '../lib/llmMatching'
 import { buildAssessmentKey, cachedLlmAssessment } from '../lib/llmRequestCache'
 import { profileFieldsKey } from '../lib/profileFieldsKey'
@@ -47,6 +48,7 @@ export function HrPortal() {
     finalReason, setFinalReason,
     hrStep: step, setHrStep: setStep, logout, seedDemoForHr,
     offline, setOffline,
+    applicationId, interviewRecording,
     fields, auditLog,
     interviewConfig, setInterviewConfig,
     hrInjectedQuestion, setHrInjectedQuestion,
@@ -67,6 +69,7 @@ export function HrPortal() {
   const [pillarWeights, setPillarWeights] = useState<PillarWeights>(() => loadPillarWeights())
   const [jdWeights, setJdWeights] = useState<JdDimensionWeight[]>(() => loadJdDimensionWeights())
   const [configModalOpen, setConfigModalOpen] = useState(false)
+  const [reviewFocusTurnId, setReviewFocusTurnId] = useState<string | null>(null)
 
   const filtered = useMemo(() => {
     return matches.filter((m) => {
@@ -77,7 +80,7 @@ export function HrPortal() {
     }).sort((a, b) => computeMatchTotalScore(b.dimensions, jdWeights) - computeMatchTotalScore(a.dimensions, jdWeights))
   }, [matches, filters, jdWeights])
 
-  const selected = filtered.find((m) => m.candidateId === selectedId) ?? filtered[0]
+  const selected = filtered.find((m) => m.candidateId === selectedId) ?? filtered[0] ?? matches[0]!
   const cvScore = useMemo(
     () => computeMatchTotalScore(selected?.dimensions ?? [], jdWeights),
     [selected?.dimensions, jdWeights],
@@ -122,14 +125,16 @@ export function HrPortal() {
     )
   }
   const readyForInterviewReview = pipeline.interviewCompleted || interviewTurns.length > 0
+  const canRecordFinalDecision = canReachFinalDecision(pipeline) && readyForInterviewReview
   const interviewLive = pipeline.assessmentSubmitted && !pipeline.interviewCompleted
   const fieldsKey = useMemo(() => profileFieldsKey(fields), [fields])
   const assessmentKey = useMemo(
     () => buildAssessmentKey({
       assessmentScore,
       turns: interviewTurns,
+      questionRubrics: interviewConfig.questionRubrics,
     }),
-    [assessmentScore, interviewTurns],
+    [assessmentScore, interviewTurns, interviewConfig.questionRubrics],
   )
 
   useEffect(() => {
@@ -168,6 +173,7 @@ export function HrPortal() {
         assessmentScore,
         matchScore: cvScore,
         jobTitle: FINANCE_JOB.title,
+        interviewConfig: toInterviewConfigPayload(interviewConfig),
       }).then((report) => {
         log('System', 'LLM interview assessment generated', `${report.dimensions.length} dimensions · mode ${report.mode}`, 'H3')
         return report
@@ -188,15 +194,15 @@ export function HrPortal() {
       })
 
     return () => { active = false }
-  }, [assessmentKey, readyForInterviewReview])
+  }, [assessmentKey, readyForInterviewReview, interviewTurns, assessmentScore, cvScore, interviewConfig, log])
 
   const steps = HR_STEPS.map((s, index) => {
     const locked =
       (s.id === 'H3' && !readyForInterviewReview) ||
-      (s.id === 'H4' && !readyForInterviewReview) ||
+      (s.id === 'H4' && (!readyForInterviewReview || !pipeline.shortlisted)) ||
       (s.id === 'H5' && !pipeline.finalDecisionMade)
     const lockNote =
-      s.id === 'H3' || s.id === 'H4' ? (interviewLive ? 'Interview in progress — review updates live' : 'Complete candidate C4 first') :
+      s.id === 'H3' || s.id === 'H4' ? (interviewLive ? 'Interview in progress — review updates live' : !pipeline.shortlisted && s.id === 'H4' ? 'Shortlist on H2 before final decision' : 'Complete candidate C4 first') :
       s.id === 'H5' ? 'Record a final decision first' :
       undefined
     const complete =
@@ -260,6 +266,7 @@ export function HrPortal() {
     onStepChange: (s: string) => setStep(s as HrStepId),
     onLogout: logout,
     integrationSyncs,
+    applicationId,
   }
 
   return (
@@ -324,6 +331,7 @@ export function HrPortal() {
                 onSelect={setSelectedId}
                 jdWeights={jdWeights}
                 pipeline={pipeline}
+                applicationId={applicationId}
                 assessmentScore={assessmentScore}
                 interviewTurnCount={interviewTurns.length}
                 interviewCompleted={pipeline.interviewCompleted}
@@ -353,7 +361,7 @@ export function HrPortal() {
             onJdWeightsChange={handleJdWeightsChange}
           />
 
-          <button type="button" className="primary" onClick={() => setStep('H2')}>Continue to shortlist / reject</button>
+          <button type="button" className="primary" disabled={!selected} onClick={() => setStep('H2')}>Continue to shortlist / reject</button>
         </section>
       )}
 
@@ -376,10 +384,11 @@ export function HrPortal() {
           <div className="grid-2">
             <div className="card">
               <h3>Shortlist for interview</h3>
-              <p className="muted">Advance {selected.candidate.name} to the interview stage</p>
+              <p className="muted">Advance {selected?.candidate.name ?? 'the selected candidate'} to the interview stage</p>
               <textarea placeholder="Reason for shortlist (required)" value={shortlistedReason} onChange={(e) => setShortlistedReason(e.target.value)} />
-              <button type="button" className="primary" disabled={!shortlistedReason.trim()} onClick={() => {
-                setPipeline({ shortlisted: true, disqualified: false })
+              <button type="button" className="primary" disabled={!shortlistedReason.trim() || !selected} onClick={() => {
+                if (!selected) return
+                setPipeline(applyShortlist())
                 syncIntegration('jadarah.pipelineStatus', 'H2', `Shortlisted · ${selected.candidate.name}`)
                 log('Recruiter', 'Shortlisted', `${selected.candidate.name}: ${shortlistedReason}`, 'H2')
                 setStep('H3')
@@ -387,10 +396,11 @@ export function HrPortal() {
             </div>
             <div className="card">
               <h3>Do not shortlist</h3>
-              <p className="muted">Decline {selected.candidate.name} at this stage — application stays on record</p>
+              <p className="muted">Decline {selected?.candidate.name ?? 'the selected candidate'} at this stage — application stays on record</p>
               <textarea placeholder="Reason for declining shortlist (required)" value={disqualifiedReason} onChange={(e) => setDisqualifiedReason(e.target.value)} />
-              <button type="button" className="danger" disabled={!disqualifiedReason.trim()} onClick={() => {
-                setPipeline({ disqualified: true, shortlisted: false })
+              <button type="button" className="danger" disabled={!disqualifiedReason.trim() || !selected} onClick={() => {
+                if (!selected) return
+                setPipeline(applyBelowThreshold())
                 syncIntegration('jadarah.pipelineStatus', 'H2', `Not shortlisted · ${selected.candidate.name}`)
                 log('Recruiter', 'Not shortlisted', `${selected.candidate.name}: ${disqualifiedReason}`, 'H2')
               }}>{pipeline.disqualified ? 'Not shortlisted · reason recorded' : 'Decline at shortlist stage'}</button>
@@ -419,10 +429,25 @@ export function HrPortal() {
             <div className="kpi-card"><span>Interview turns</span><strong>{interviewTurns.length}</strong></div>
             <div className="kpi-card"><span>Status</span><strong className="kpi-small">{pipeline.shortlisted ? 'Shortlisted' : 'Pending'}</strong></div>
           </div>
-          <InterviewReviewPanel turns={interviewTurns} />
+          <InterviewReviewPanel
+            turns={interviewTurns}
+            applicationId={applicationId}
+            recordingMeta={interviewRecording}
+            focusTurnId={reviewFocusTurnId}
+          />
           {assessmentLoading && <p className="muted">Generating LLM assessment from interview transcript…</p>}
           {assessmentError && <p className="danger-text">{assessmentError}</p>}
-          {interviewReport && <EvaluationReportPanel report={interviewReport} />}
+          {interviewReport && (
+            <EvaluationReportPanel
+              report={interviewReport}
+              clampedRecommendation={clampLlmRecommendationToScores(
+                interviewReport.recommendation,
+                interviewPillarScore,
+                overallWeightedScore,
+              )}
+              onSelectEvidence={(turnId) => setReviewFocusTurnId(turnId)}
+            />
+          )}
           <button type="button" className="primary" onClick={proceedToFinalDecision}>
             {pipeline.shortlisted ? 'Proceed to final decision →' : 'Go to shortlist decision →'}
           </button>
@@ -437,6 +462,14 @@ export function HrPortal() {
               <p>AI provides recommendation only — recruiter holds final authority. Outcome syncs to simulated Jadarah + Oracle EBS endpoints.</p>
             </div>
           </header>
+
+          {!canRecordFinalDecision && (
+            <div className="banner-warn">
+              {!pipeline.shortlisted
+                ? 'Shortlist the candidate on H2 before recording a final hire/reject decision.'
+                : 'Complete interview review (H3) before final decision.'}
+            </div>
+          )}
 
           <CurrentCandidateCard
             candidate={selected}
@@ -460,7 +493,14 @@ export function HrPortal() {
             <span className="ai-label">AI recommendation</span>
             <strong>{deriveAiRecommendation(overallWeightedScore)}</strong>
             {interviewReport?.recommendation && (
-              <p className="muted tiny">LLM narrative (supplementary): {interviewReport.recommendation}</p>
+              <p className="muted tiny">
+                LLM narrative (supplementary):{' '}
+                {clampLlmRecommendationToScores(
+                  interviewReport.recommendation,
+                  interviewPillarScore,
+                  overallWeightedScore,
+                )}
+              </p>
             )}
             <p>
               Overall weighted score {overallWeightedScore}% — CV {cvScore}% · Assessment {assessmentScore}%
@@ -469,21 +509,37 @@ export function HrPortal() {
           </div>
 
           <div className="decision-toggle">
-            <button type="button" className={`decision-btn hire ${decisionType === 'hire' ? 'selected' : ''}`} onClick={() => setDecisionType('hire')}>
+            <button
+              type="button"
+              className={`decision-btn hire ${decisionType === 'hire' ? 'selected' : ''}`}
+              disabled={!canRecordFinalDecision}
+              title={!canRecordFinalDecision ? 'Shortlist the candidate on H2 before a hire recommendation.' : undefined}
+              onClick={() => setDecisionType('hire')}
+            >
               <UserCheck size={18} /> Recommend hire
             </button>
-            <button type="button" className={`decision-btn reject ${decisionType === 'reject' ? 'selected' : ''}`} onClick={() => setDecisionType('reject')}>
+            <button
+              type="button"
+              className={`decision-btn reject ${decisionType === 'reject' ? 'selected' : ''}`}
+              disabled={!canRecordFinalDecision}
+              title={!canRecordFinalDecision ? 'Shortlist the candidate on H2 before recording a reject decision.' : undefined}
+              onClick={() => setDecisionType('reject')}
+            >
               <UserX size={18} /> Reject
             </button>
           </div>
+          {!canRecordFinalDecision && (
+            <p className="muted tiny">Hire / Reject stay disabled until the candidate is shortlisted and the interview record is on this application.</p>
+          )}
 
           <textarea placeholder="Final decision reason (required)" value={finalReason} onChange={(e) => setFinalReason(e.target.value)} />
 
           <button
             type="button"
             className="primary"
-            disabled={!finalReason.trim() || !decisionType}
+            disabled={!finalReason.trim() || !decisionType || !canRecordFinalDecision || !selected}
             onClick={() => {
+              if (!canRecordFinalDecision || !decisionType || !selected) return
               setPipeline({ finalDecisionMade: true, finalDecisionType: decisionType })
               if (decisionType === 'hire') {
                 syncIntegration('jadarah.hireOutcome', 'H4', finalReason)

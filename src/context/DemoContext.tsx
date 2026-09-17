@@ -10,6 +10,7 @@ import type {
   ProfileTagGroup,
   InterviewConfig,
   HrInjectedQuestion,
+  InterviewRecordingMeta,
   UserRole,
   WorkExperienceEntry,
 } from '../types'
@@ -27,6 +28,12 @@ export interface DemoContextValue {
     step: string,
     detail?: string,
   ) => IntegrationSyncEvent
+  applicationId: string
+  cvUploadId: string | null
+  interviewRecording: InterviewRecordingMeta | null
+  setCvUploadId: (uploadId: string | null) => void
+  setInterviewRecording: (meta: InterviewRecordingMeta | null) => void
+  ensureApplicationId: () => string
   pipeline: PipelineStatus
   setPipeline: (patch: Partial<PipelineStatus>) => void
   fields: ProfileField[]

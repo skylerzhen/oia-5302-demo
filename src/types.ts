@@ -30,6 +30,8 @@ export interface WorkExperienceEntry {
   title: string
   start: string
   end: string
+  industry?: string
+  location?: string
   responsibilities: string[]
   status: FieldStatus
   evidence: string
@@ -93,6 +95,8 @@ export interface InterviewQuestion {
   textAr?: string
   dimension?: string
   source: 'custom' | 'jd'
+  /** HR rubric — what a strong answer should contain (governance / LLM grounding). */
+  strongAnswerRubric?: string
 }
 
 export type InterviewConfigMode = 'fixed_only' | 'fixed_then_adaptive' | 'adaptive'
@@ -109,6 +113,8 @@ export interface InterviewConfig {
   minAnswers: number
   maxAnswers: number
   savedAt?: string
+  /** Per-question strong-answer rubric keyed by question id (custom + JD). */
+  questionRubrics?: Record<string, string>
 }
 
 /** One-shot question HR pushes during a live C4 interview (consumed on candidate's next turn). */
@@ -122,6 +128,9 @@ export interface InterviewTurn {
   speaker: 'avatar' | 'candidate'
   language: 'en'
   text: string
+  recordedAt?: string
+  /** Milliseconds from session recording start — used to seek HR playback. */
+  offsetMs?: number
   expression?: 'neutral' | 'supportive' | 'curious' | 'gesture'
   /** Set on avatar follow-up turns so reviewers can see LLM grounding. */
   followUpMeta?: {
@@ -163,4 +172,14 @@ export interface PipelineStatus {
   disqualified: boolean
   finalDecisionMade: boolean
   finalDecisionType: 'hire' | 'reject' | null
+}
+
+export interface InterviewRecordingMeta {
+  applicationId: string
+  startedAt: string
+  endedAt: string
+  durationMs: number
+  mimeType: string
+  turnCount: number
+  byteLength?: number
 }

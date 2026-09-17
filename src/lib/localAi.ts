@@ -212,6 +212,7 @@ export const localAi = {
     assessmentScore: number
     matchScore: number
     jobTitle?: string
+    interviewConfig?: object
   }) => post<AssessmentResult>('/api/local-ai/llm/generate-assessment', payload),
   matchCandidates: (payload: {
     candidates: Array<{ candidateId: string; name: string; cvText: string }>

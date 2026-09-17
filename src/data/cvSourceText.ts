@@ -34,13 +34,26 @@ Skills: Portfolio analysis · Risk reporting · Excel modelling · Variance anal
   'docx-en': `# Khalid Al-Balushi
 
 Email: k.albalushi@example.om
-Phone: +968 9876 5432
-Nationality: Omani
 Location: Muscat, Oman
 
-Five years in financial reporting with portfolio exposure.
-Education: BSc Accounting · Graduation: 2019
-Skills: Financial reporting, Excel, English`,
+Financial reporting analyst with five years of accounting, management reporting
+and Excel experience. Limited direct portfolio-analysis exposure.
+
+Experience:
+Financial Reporting Analyst — Oman Infrastructure Holdings
+2020–Present
+- Produced monthly management packs and variance commentary.
+- Maintained Excel reporting templates and reconciliations.
+- Coordinated Arabic financial-report translation with the communications team.
+
+Junior Accountant — Muscat Commercial Services
+2018–2020
+- Supported account reconciliations and budget reporting.
+
+Education:
+BSc Accounting
+
+Skills: Financial reporting · Excel · Arabic · Management reporting`,
 
   'pdf-scan': `# Noor Al-Hashmi — scanned PDF OCR demo
 

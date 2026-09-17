@@ -18,7 +18,9 @@ function normalizeCvFields(rawFields) {
 }
 
 function tryAdapterFallback(body) {
-  const sampleId = String(body.sampleId ?? 'pdf-en')
+  const requested = String(body.sampleId ?? '').trim()
+  const sampleId = ['pdf-en', 'docx-en', 'pdf-scan'].includes(requested) ? requested : ''
+  if (!sampleId) return null
   const fallbackPath = resolve(process.cwd(), 'data/cv-parse-fallback', `${sampleId}.json`)
   if (!existsSync(fallbackPath)) return null
   try {
@@ -88,6 +90,8 @@ Return JSON only:
       "title": "string",
       "start": "YYYY or YYYY-MM",
       "end": "YYYY or Present or empty",
+      "industry": "string if stated",
+      "location": "string if stated",
       "responsibilities": ["bullet1","bullet2"],
       "status": "parsed|review|missing",
       "evidence": "quote",
@@ -107,6 +111,8 @@ Rules:
 - skills.items = technical/professional skills only (not languages).
 - languages.items = spoken languages only.
 - workHistory = one object per role with responsibilities as bullet strings from the CV.
+- Also fill workHistory.industry and workHistory.location when those appear next to the role.
+- After work history is extracted, companyName/positionTitle/industry/location MUST match the current (Present) role. Do not leave Current role missing when experience has employer and title.
 - Use status "review" when OCR/scan uncertainty or partial extraction.
 - certification MUST be missing with empty value when no certification appears in the CV (v1 Sara CV has NO CFA).
 - evidence must quote or closely paraphrase the source text.`,
@@ -149,10 +155,13 @@ export async function handleGenerateQuestion(body) {
     ? config.prohibitedTopics.join('; ')
     : ''
 
+  const questionRubrics = formatQuestionRubrics(config)
+
   const text = await chatText({
     model: fastModel,
     system: `You are an OIA AI interviewer for a senior financial analyst role.
 Generate one concise interview question in English aligned with HR interview configuration.
+When HR strong-answer rubrics are provided, the question must elicit evidence against those criteria (metrics, stakeholders, controls, decision impact).
 Return only the question text, no quotes or preamble.`,
     user: JSON.stringify({
       jobDescription,
@@ -161,6 +170,7 @@ Return only the question text, no quotes or preamble.`,
       allowedDimensions: dimensionHints,
       prohibitedTopics: prohibited,
       hrCustomQuestions: config?.customQuestions ?? [],
+      hrStrongAnswerRubrics: questionRubrics || undefined,
     }),
   })
 
@@ -181,6 +191,56 @@ function formatInterviewTranscript(priorTurns) {
     .map((turn) => {
       const role = turn.speaker === 'avatar' ? 'Interviewer' : 'Candidate'
       return `${role}: ${turn.text}`
+    })
+    .join('\n')
+}
+
+function collectQuestionRubrics(config) {
+  const rows = []
+  const seen = new Set()
+  const push = (questionId, textEn, rubric) => {
+    const strongAnswerRubric = String(rubric ?? '').trim()
+    if (!strongAnswerRubric) return
+    const id = String(questionId ?? '').trim() || String(textEn ?? '').slice(0, 40)
+    const key = `${id}::${strongAnswerRubric}`
+    if (seen.has(key)) return
+    seen.add(key)
+    rows.push({
+      questionId: id,
+      textEn: String(textEn ?? '').trim(),
+      strongAnswerRubric,
+    })
+  }
+
+  const raw = config?.questionRubrics
+  if (Array.isArray(raw)) {
+    for (const item of raw) {
+      if (!item || typeof item !== 'object') continue
+      push(item.questionId, item.textEn, item.strongAnswerRubric)
+    }
+  } else if (raw && typeof raw === 'object') {
+    for (const [questionId, rubric] of Object.entries(raw)) {
+      push(questionId, '', rubric)
+    }
+  }
+
+  if (Array.isArray(config?.customQuestions)) {
+    for (const question of config.customQuestions) {
+      if (!question || typeof question !== 'object') continue
+      push(question.id, question.textEn, question.strongAnswerRubric)
+    }
+  }
+
+  return rows
+}
+
+function formatQuestionRubrics(config) {
+  const rows = collectQuestionRubrics(config)
+  if (rows.length === 0) return ''
+  return rows
+    .map((row) => {
+      const question = row.textEn || row.questionId || 'question'
+      return `- ${question}\n  Strong-answer rubric: ${row.strongAnswerRubric}`
     })
     .join('\n')
 }
@@ -225,6 +285,8 @@ export async function handleFollowUp(body) {
   const fixedQueue = Array.isArray(config.fixedQuestionQueue) ? config.fixedQuestionQueue : []
   const fixedRemaining = Math.max(0, fixedQueue.length - priorTurns.filter((t) => t.speaker === 'avatar').length)
 
+  const questionRubrics = formatQuestionRubrics(config)
+
   const user = [
     profileLine ? `Candidate profile: ${profileLine}` : '',
     transcript ? `Transcript so far:\n${transcript}` : '',
@@ -233,6 +295,9 @@ export async function handleFollowUp(body) {
     fixedRemaining > 0 ? `Note: ${fixedRemaining} HR fixed question(s) remain in queue — this turn is adaptive unless fixed queue is exhausted on the client.` : '',
     `Allowed follow-up dimensions: ${allowedDimensions}.`,
     prohibited ? `Prohibited topics (never ask about): ${prohibited}.` : '',
+    questionRubrics
+      ? `HR strong-answer rubrics (follow-ups must elicit any missing criteria; do not repeat already covered ground):\n${questionRubrics}`
+      : '',
   ].filter(Boolean).join('\n\n')
 
   const parsed = await chatJson({
@@ -245,7 +310,8 @@ Reply with JSON only: { "action": "follow_up" | "closing", "text": "...", "targe
 Rules:
 - action "follow_up": ONE English question, max 22 words, no greeting or praise. Must include a concrete noun/phrase verbatim from the latest answer (e.g. "${answerHook.slice(0, 40)}"). Probe metrics, stakeholders, trade-offs, or validation within allowed dimensions only.
 - targetDimension: pick the JD rubric dimension your question primarily assesses.
-- action "closing": ONLY if candidateRound >= ${MIN} AND you have sufficient evidence across allowed dimensions. text = brief professional closing (1–2 sentences, no question mark).
+- When HR strong-answer rubrics are provided, target the uncovered rubric criteria (named metric, stakeholder/audience, control/limit, decision impact). Do not close while a listed rubric still lacks transcript evidence.
+- action "closing": ONLY if candidateRound >= ${MIN} AND you have sufficient evidence across allowed dimensions AND the provided rubrics. text = brief professional closing (1–2 sentences, no question mark).
 - NEVER use "closing" before round ${MIN}.
 - NEVER ask about prohibited topics.
 - If unsure, prefer "follow_up" until round ${MIN}.`,
@@ -393,6 +459,12 @@ export async function handleGenerateAssessment(body) {
   const turns = Array.isArray(body.turns) ? body.turns : []
   if (turns.length === 0) throw new Error('Interview turns are required')
 
+  const config = body.interviewConfig && typeof body.interviewConfig === 'object'
+    ? body.interviewConfig
+    : {}
+  const questionRubrics = collectQuestionRubrics(config)
+  const rubricBlock = formatQuestionRubrics(config)
+
   const parsed = await chatJson({
     model: fastModel,
     system: `You evaluate a candidate interview for an OIA HR demo.
@@ -413,12 +485,18 @@ Rules:
 - use 3 dimensions
 - every rationale must cite concrete transcript content
 - scores must reflect the actual answers in this take, not generic templates
+- When HR strong-answer rubrics are provided, score against those criteria. A high score requires the transcript to cover the named rubric items (metric, stakeholder/audience, control/limit, decision impact). Missing criteria MUST lower the score. Do not invent coverage.
+- Compute dimension scores from the transcript and rubric coverage first. The recommendation MUST agree with those scores, the provided assessmentScore/matchScore, AND rubric coverage. If answers are thin, scores are low, or rubrics are unmet, you may not claim strong financial-analysis competence or lean hire.
 - recommendation should mention whether to proceed to human final decision`,
     user: JSON.stringify({
       turns,
       assessmentScore: body.assessmentScore,
       matchScore: body.matchScore,
       jobTitle: body.jobTitle ?? 'Senior Financial Analyst',
+      hrStrongAnswerRubrics: questionRubrics,
+      hrRubricGuide: rubricBlock || undefined,
+      followUpDimensions: config.followUpDimensions ?? [],
+      prohibitedTopics: config.prohibitedTopics ?? [],
     }),
   })
 

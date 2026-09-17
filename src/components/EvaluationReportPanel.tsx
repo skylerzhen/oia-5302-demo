@@ -1,4 +1,4 @@
-import type { InterviewEvaluationReport } from '../lib/interviewReport'
+import type { AssessmentResult } from '../lib/localAi'
 
 function interviewDimensionPct(score: number, maxScore?: number): number {
   const max = maxScore ?? 100
@@ -7,16 +7,22 @@ function interviewDimensionPct(score: number, maxScore?: number): number {
 }
 
 interface EvaluationReportPanelProps {
-  report: InterviewEvaluationReport
+  report: Pick<AssessmentResult, 'recommendation' | 'dimensions'>
+  clampedRecommendation?: string
+  onSelectEvidence?: (turnId: string, quote: string) => void
 }
 
-export function EvaluationReportPanel({ report }: EvaluationReportPanelProps) {
+export function EvaluationReportPanel({
+  report,
+  clampedRecommendation,
+  onSelectEvidence,
+}: EvaluationReportPanelProps) {
   return (
     <section className="evaluation-report card">
       <header className="section-head">
         <div>
           <h2>Evidence-linked interview evaluation</h2>
-          <p>Scores are recommendations for HR review, not an automatic decision.</p>
+          <p>Deterministic scores are authoritative. Click a dimension to open the transcript segment that produced it.</p>
         </div>
       </header>
 
@@ -31,14 +37,26 @@ export function EvaluationReportPanel({ report }: EvaluationReportPanelProps) {
               <p>{dimension.rationale}</p>
               <blockquote>
                 <span>Transcript evidence</span>
-                {dimension.evidence.text}
+                {onSelectEvidence && dimension.evidence?.id ? (
+                  <button
+                    type="button"
+                    className="evidence-turn-link"
+                    onClick={() => onSelectEvidence(dimension.evidence.id, dimension.evidence.text)}
+                  >
+                    {dimension.evidence.text}
+                  </button>
+                ) : (
+                  dimension.evidence?.text ?? 'No transcript excerpt'
+                )}
               </blockquote>
             </div>
           </article>
         ))}
       </div>
 
-      <p className="report-recommendation"><strong>Recommendation:</strong> {report.recommendation}</p>
+      <p className="report-recommendation">
+        <strong>Recommendation:</strong> {clampedRecommendation || report.recommendation}
+      </p>
     </section>
   )
 }

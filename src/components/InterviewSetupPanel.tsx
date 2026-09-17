@@ -32,6 +32,12 @@ export function InterviewSetupPanel({
     onChange({ ...config, ...partial })
   }
 
+  function updateQuestionRubric(questionId: string, rubric: string) {
+    const questionRubrics = { ...(config.questionRubrics ?? {}), [questionId]: rubric }
+    if (!rubric.trim()) delete questionRubrics[questionId]
+    update({ questionRubrics })
+  }
+
   function toggleJdQuestion(id: string) {
     const enabled = config.enabledJdQuestionIds.includes(id)
       ? config.enabledJdQuestionIds.filter((q) => q !== id)
@@ -116,17 +122,27 @@ export function InterviewSetupPanel({
             {config.customQuestions.map((q, index) => (
               <li key={q.id} className="interview-question-row">
                 <span className="interview-question-index">{index + 1}</span>
-                <textarea
-                  value={q.textEn}
-                  onChange={(e) => {
-                    const customQuestions = config.customQuestions.map((item) =>
-                      item.id === q.id ? { ...item, textEn: e.target.value } : item,
-                    )
-                    update({ customQuestions })
-                  }}
-                  rows={2}
-                  aria-label={`Custom question ${index + 1}`}
-                />
+                <div className="stack">
+                  <textarea
+                    value={q.textEn}
+                    onChange={(e) => {
+                      const customQuestions = config.customQuestions.map((item) =>
+                        item.id === q.id ? { ...item, textEn: e.target.value } : item,
+                      )
+                      update({ customQuestions })
+                    }}
+                    rows={2}
+                    aria-label={`Custom question ${index + 1}`}
+                  />
+                  <textarea
+                    className="interview-rubric-input"
+                    placeholder="What a strong answer contains (rubric for AI + HR governance)…"
+                    value={config.questionRubrics?.[q.id] ?? q.strongAnswerRubric ?? ''}
+                    onChange={(e) => updateQuestionRubric(q.id, e.target.value)}
+                    rows={2}
+                    aria-label={`Rubric for custom question ${index + 1}`}
+                  />
+                </div>
                 <div className="interview-question-row-actions">
                   <button type="button" className="ghost-btn" aria-label="Move up" onClick={() => moveCustomQuestion(q.id, -1)}>
                     <ChevronUp size={14} />
@@ -174,6 +190,15 @@ export function InterviewSetupPanel({
                         />
                         <span>{q.textEn}</span>
                       </label>
+                      {config.enabledJdQuestionIds.includes(q.id) && (
+                        <textarea
+                          className="interview-rubric-input"
+                          placeholder="Strong answer rubric for this JD question…"
+                          value={config.questionRubrics?.[q.id] ?? ''}
+                          onChange={(e) => updateQuestionRubric(q.id, e.target.value)}
+                          rows={2}
+                        />
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -250,13 +275,17 @@ export function InterviewSetupPanel({
         <section className="card stack interview-setup-section">
           <h4>Interview order preview</h4>
           <ol className="interview-queue-preview">
-            {queuePreview.map((q, index) => (
+            {queuePreview.map((q, index) => {
+              const rubric = config.questionRubrics?.[q.id] ?? q.strongAnswerRubric
+              return (
               <li key={q.id}>
                 <span className="interview-queue-tag">{q.source === 'jd' ? 'JD' : 'Custom'}</span>
                 <span>{q.textEn}</span>
                 {index === 0 && <em className="muted tiny"> · opening</em>}
+                {rubric ? <em className="muted tiny"> · strong answer: {rubric}</em> : null}
               </li>
-            ))}
+              )
+            })}
           </ol>
           {config.mode !== 'fixed_only' && (
             <p className="muted tiny">

@@ -7,6 +7,7 @@ import type {
   HrInjectedQuestion,
   IntegrationSyncEvent,
   InterviewConfig,
+  InterviewRecordingMeta,
   InterviewTurn,
   PipelineStatus,
   ProfileField,
@@ -17,9 +18,24 @@ import type {
 
 export const DEMO_SESSION_STORAGE_KEY = 'oia-5302-demo-session'
 
+export function generateApplicationId(): string {
+  const stamp = Date.now().toString(36).toUpperCase()
+  const rand = Math.random().toString(36).slice(2, 6).toUpperCase()
+  return `OIA-5302-${stamp}-${rand}`
+}
+
+export function ensureApplicationId(existing: string | undefined | null): string {
+  const trimmed = existing?.trim()
+  if (trimmed) return trimmed
+  return generateApplicationId()
+}
+
 export interface DemoSession {
   role: UserRole | null
   offline: boolean
+  applicationId: string
+  cvUploadId: string | null
+  interviewRecording: InterviewRecordingMeta | null
   candidateStep: CandidateStepId
   hrStep: HrStepId
   pipeline: PipelineStatus
@@ -53,6 +69,9 @@ export function defaultSession(): DemoSession {
   return {
     role: null,
     offline: false,
+    applicationId: '',
+    cvUploadId: null,
+    interviewRecording: null,
     candidateStep: 'C1',
     hrStep: 'H1',
     pipeline: { ...defaultPipeline },
@@ -89,6 +108,9 @@ export function parseStoredSession(raw: string): DemoSession {
     ...parsed,
     role: null,
     offline: false,
+    applicationId: parsed.applicationId?.trim() || '',
+    cvUploadId: parsed.cvUploadId ?? null,
+    interviewRecording: parsed.interviewRecording ?? null,
     pipeline: { ...defaultPipeline, ...(parsed.pipeline ?? {}) },
     integrationSyncs: parsed.integrationSyncs ?? [],
     fields: mergeProfileFields(Array.isArray(parsed.fields) ? parsed.fields : []),
@@ -118,6 +140,7 @@ export function saveSession(session: DemoSession) {
     DEMO_SESSION_STORAGE_KEY,
     JSON.stringify({
       ...session,
+      applicationId: ensureApplicationId(session.applicationId),
       role: null,
       offline: false,
     }),

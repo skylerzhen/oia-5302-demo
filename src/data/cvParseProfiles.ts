@@ -66,7 +66,7 @@ export const CV_PARSE_PROFILES: Record<string, CvParseProfileData> = {
 export function resolveSampleProfileId(fileName: string): string | null {
   const normalized = fileName.toLowerCase()
   if (normalized.includes('noor') || normalized.includes('scan')) return 'pdf-scan'
-  if (normalized.includes('khalid') || normalized.endsWith('.docx')) return 'docx-en'
+  if (normalized.includes('khalid') || normalized.includes('02-khalid')) return 'docx-en'
   if (normalized.includes('sara') || normalized.includes('01-sara')) return 'pdf-en'
   return null
 }
@@ -124,33 +124,79 @@ export function applyCvParsePayload(
 }
 
 /** Map Current role scalars from the most recent work-history entry when parse omitted them. */
+function pickCurrentWorkEntry(
+  workHistory: Array<Omit<WorkExperienceEntry, 'id'> | WorkExperienceEntry>,
+) {
+  if (workHistory.length === 0) return undefined
+  const present = workHistory.find((entry) => /present|current/i.test(entry.end) || !entry.end.trim())
+  return present ?? workHistory[0]
+}
+
+function workHistoryBlob(
+  entry: Omit<WorkExperienceEntry, 'id'> | WorkExperienceEntry,
+) {
+  return [
+    entry.evidence,
+    entry.source,
+    entry.industry,
+    entry.location,
+    ...(entry.responsibilities ?? []),
+  ].filter(Boolean).join(' · ')
+}
+
+function inferIndustry(
+  entry: Omit<WorkExperienceEntry, 'id'> | WorkExperienceEntry,
+) {
+  if (entry.industry?.trim()) return entry.industry.trim()
+  const match = workHistoryBlob(entry).match(/Industry:\s*([^·\n|]+)/i)
+  return match?.[1]?.trim() ?? ''
+}
+
+function inferLocation(
+  entry: Omit<WorkExperienceEntry, 'id'> | WorkExperienceEntry,
+  fields: ProfileField[],
+) {
+  if (entry.location?.trim()) return entry.location.trim()
+  const blob = workHistoryBlob(entry)
+  const match = blob.match(
+    /\b(Muscat(?:\s*,\s*Oman)?|Salalah|Sohar|Dubai|Abu Dhabi|Riyadh|Doha|London|UAE|Oman)\b/i,
+  )
+  if (match?.[0]) return match[0]
+  const address = fields.find((f) => f.key === 'address')?.value.trim()
+  return address ?? ''
+}
+
+function projectMissingField(
+  field: ProfileField | undefined,
+  value: string,
+  entry: Omit<WorkExperienceEntry, 'id'> | WorkExperienceEntry,
+): { value: string; status: FieldStatus; evidence: string; source: string } | null {
+  if (!field || field.value.trim() || !value.trim()) return null
+  return {
+    value,
+    status: entry.status ?? 'parsed',
+    evidence: entry.evidence || `${entry.title} — ${entry.company}`,
+    source: entry.source || 'Experience section',
+  }
+}
+
 function syncCurrentRoleFromWorkHistory(
   fields: ProfileField[],
   workHistory: Array<Omit<WorkExperienceEntry, 'id'> | WorkExperienceEntry>,
 ): ProfileField[] {
-  const current = workHistory[0]
+  const current = pickCurrentWorkEntry(workHistory)
   if (!current) return fields
 
   const patch: Record<string, { value: string; status: FieldStatus; evidence: string; source: string }> = {}
-  const company = fields.find((f) => f.key === 'companyName')
-  const title = fields.find((f) => f.key === 'positionTitle')
+  const company = projectMissingField(fields.find((f) => f.key === 'companyName'), current.company, current)
+  const title = projectMissingField(fields.find((f) => f.key === 'positionTitle'), current.title, current)
+  const industry = projectMissingField(fields.find((f) => f.key === 'industry'), inferIndustry(current), current)
+  const location = projectMissingField(fields.find((f) => f.key === 'location'), inferLocation(current, fields), current)
 
-  if (company && !company.value.trim() && current.company.trim()) {
-    patch.companyName = {
-      value: current.company,
-      status: current.status ?? 'parsed',
-      evidence: current.evidence || `${current.title} — ${current.company}`,
-      source: current.source || 'Experience section',
-    }
-  }
-  if (title && !title.value.trim() && current.title.trim()) {
-    patch.positionTitle = {
-      value: current.title,
-      status: current.status ?? 'parsed',
-      evidence: current.evidence || `${current.title} — ${current.company}`,
-      source: current.source || 'Experience section',
-    }
-  }
+  if (company) patch.companyName = company
+  if (title) patch.positionTitle = title
+  if (industry) patch.industry = industry
+  if (location) patch.location = location
 
   if (Object.keys(patch).length === 0) return fields
   return fields.map((field) => (patch[field.key] ? { ...field, ...patch[field.key] } : field))

@@ -52,7 +52,7 @@ export function createDemoPipelinePatch(): Partial<DemoSession> {
     },
     assessmentScore: 75,
     interviewTurns: [
-      { id: 'seed-g', speaker: 'avatar', language: 'en', text: INTERVIEW_PRESET[0].text },
+      { id: 'seed-g', speaker: 'avatar', language: 'en', text: INTERVIEW_PRESET[0].text, recordedAt: new Date().toISOString(), offsetMs: 0 },
       {
         id: 'seed-c1',
         speaker: 'candidate',

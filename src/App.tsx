@@ -13,10 +13,11 @@ import {
   loadSession,
   parseStoredSession,
   saveSession,
+  ensureApplicationId as ensureSessionApplicationId,
   type DemoSession,
 } from './lib/session'
 import { createDemoPipelinePatch, createDemoCandidateC4Patch } from './lib/demoSeed'
-import { saveInterviewConfig } from './lib/interviewConfig'
+import { INTERVIEW_CONFIG_STORAGE_KEY, normalizeInterviewConfig, saveInterviewConfig } from './lib/interviewConfig'
 import { readDemoJumpTarget } from './lib/demoJump'
 import { enableExternalEgressGuard } from './lib/egressGuard'
 import { RoleSelect } from './components/RoleSelect'
@@ -132,6 +133,7 @@ function JourneyTestChannel() {
     candidateStep,
     hrStep,
     assessmentScore,
+    applicationId,
     setRole,
     setCandidateStep,
     setHrStep,
@@ -144,14 +146,14 @@ function JourneyTestChannel() {
   const hasApplication = pipeline.profileSubmitted || fields.some((f) => f.value.trim().length > 0)
 
   function openCandidate(step: CandidateStepId) {
-    setCandidateStep(step)
     setRole('candidate')
+    setCandidateStep(step)
     log('Journey test', 'Open candidate portal', `Jumped to ${step}`, 'Journey')
   }
 
   function openHr(step: HrStepId) {
-    setHrStep(step)
     setRole('hr')
+    setHrStep(step)
     log('Journey test', 'Open HR portal', `Jumped to ${step}`, 'Journey')
   }
 
@@ -187,7 +189,7 @@ function JourneyTestChannel() {
         <div className="kpi-row journey-test-kpis">
           <div className="kpi-card">
             <span>Application record</span>
-            <strong className="kpi-small">{hasApplication ? 'Live in session' : 'Empty - load demo'}</strong>
+            <strong className="kpi-small">{hasApplication ? (applicationId || 'Live in session') : 'Empty - load demo'}</strong>
           </div>
           <div className="kpi-card">
             <span>Candidate step</span>
@@ -313,6 +315,15 @@ export default function App() {
 
   useEffect(() => {
     function onStorage(event: StorageEvent) {
+      if (event.key === INTERVIEW_CONFIG_STORAGE_KEY && event.newValue) {
+        try {
+          const config = normalizeInterviewConfig(JSON.parse(event.newValue))
+          setSession((prev) => ({ ...prev, interviewConfig: config }))
+        } catch {
+          // Ignore malformed blueprint payloads.
+        }
+        return
+      }
       if (event.key !== DEMO_SESSION_STORAGE_KEY || event.newValue == null) return
       try {
         const incoming = parseStoredSession(event.newValue)
@@ -410,11 +421,14 @@ export default function App() {
           }
         }
 
+        const applicationId = ensureSessionApplicationId(prev.applicationId)
         const resumed = hasApplication
         return {
           ...prev,
           role: 'candidate',
           offline: false,
+          applicationId,
+          candidateStep: 'C1',
           auditLog: resumed
             ? prev.auditLog
             : [
@@ -422,7 +436,7 @@ export default function App() {
               createAuditEntry(
                 'Candidate',
                 'Session started',
-                'New application — upload CV to begin',
+                `Application ${applicationId} — upload CV to begin`,
                 'C1',
               ),
             ],
@@ -430,7 +444,13 @@ export default function App() {
       }
 
       // HR reads the same session record as the candidate portal — no auto-seed overwrite.
-      return { ...prev, role, offline: false }
+      return {
+        ...prev,
+        role,
+        offline: false,
+        applicationId: ensureSessionApplicationId(prev.applicationId),
+        hrStep: 'H1',
+      }
     })
   }
 
@@ -445,13 +465,34 @@ export default function App() {
   }
 
   function seedDemoForHr() {
-    patchSession((prev) => ({
-      ...createDemoPipelinePatch(),
-      auditLog: [
-        ...prev.auditLog,
-        createAuditEntry('System', 'Demo data loaded', 'Sara Al-Hinai application + interview synced for HR review', 'H1'),
-      ],
-    }))
+    patchSession((prev) => {
+      const hasApplication =
+        prev.pipeline.profileSubmitted ||
+        prev.fields.some((f) => f.value.trim().length > 0) ||
+        prev.interviewTurns.length > 0
+      if (hasApplication) {
+        return {
+          ...prev,
+          auditLog: [
+            ...prev.auditLog,
+            createAuditEntry(
+              'System',
+              'Demo load skipped',
+              'Active application record preserved — same data as Candidate portal',
+              'H1',
+            ),
+          ],
+        }
+      }
+      return {
+        ...createDemoPipelinePatch(),
+        applicationId: ensureSessionApplicationId(prev.applicationId),
+        auditLog: [
+          ...prev.auditLog,
+          createAuditEntry('System', 'Demo data loaded', 'Sara Al-Hinai application + interview synced for HR review', 'H1'),
+        ],
+      }
+    })
   }
 
   function seedDemoForCandidateC4() {
@@ -473,6 +514,16 @@ export default function App() {
     log,
     integrationSyncs: session.integrationSyncs,
     syncIntegration,
+    applicationId: session.applicationId,
+    cvUploadId: session.cvUploadId,
+    interviewRecording: session.interviewRecording,
+    setCvUploadId: (cvUploadId) => patchSession({ cvUploadId }),
+    setInterviewRecording: (interviewRecording) => patchSession({ interviewRecording }),
+    ensureApplicationId: () => {
+      const next = ensureSessionApplicationId(session.applicationId)
+      if (next !== session.applicationId) patchSession({ applicationId: next })
+      return next
+    },
     pipeline: session.pipeline,
     setPipeline,
     fields: session.fields,

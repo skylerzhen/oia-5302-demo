@@ -1,19 +1,19 @@
-/** User-facing LiveAvatar connection errors */
+/** User-facing LiveAvatar connection errors (English only — UIS demo catalogue). */
 
 export const LIVEAVATAR_CREDITS_MESSAGE =
-  'LiveAvatar 账户余额不足，无法建立数字人视频会话。请在 app.liveavatar.com 充值或开启超额计费后重试。'
+  'LiveAvatar credits are exhausted — add credits or enable overage billing at app.liveavatar.com, then retry.'
 
 export const LIVEAVATAR_VIDEO_TIMEOUT_MESSAGE =
-  'LiveAvatar 视频加载超时。云端首次连接可能需要 30–60 秒，请点击「Reconnect video」或「Start interview」再试；若仍失败，请检查网络是否允许 WebRTC（LiveKit）。'
+  'LiveAvatar video timed out. First connect can take 30–60 seconds — click Reconnect video or Start interview again. If it persists, check WebRTC (LiveKit) on your network.'
 
 export const LIVEAVATAR_LIVEKIT_MESSAGE =
-  '浏览器无法连接 LiveAvatar 视频流（LiveKit/WebRTC）。请换 Chrome/Edge、关闭广告拦截、允许麦克风，或尝试更稳定的网络/VPN 后重试。'
+  'The browser could not connect to LiveAvatar video (LiveKit/WebRTC). Try Chrome or Edge, disable ad blockers, allow microphone access, or use a stable network/VPN.'
 
 export const LIVEAVATAR_CLIENT_DISCONNECT_MESSAGE =
-  'LiveAvatar 视频连接被中断。请点击 Reconnect video，或 Restart interview 重新开始。'
+  'LiveAvatar video disconnected. Click Reconnect video or Restart interview to begin again.'
 
 export const LIVEAVATAR_GENERIC_MESSAGE =
-  'LiveAvatar 视频尚未就绪。请点击 Reconnect video 或重新开始面试；若刚开启超额计费，请先 Ctrl+Shift+R 强制刷新页面。'
+  'LiveAvatar video is not ready. Click Reconnect video or restart the interview. After billing changes, hard-refresh the page (Ctrl+Shift+R).'
 
 export function isLiveAvatarCreditsError(message: string): boolean {
   const lower = message.toLowerCase()

@@ -42,8 +42,10 @@ import { CANDIDATE_STEPS } from '../lib/demo'
 import {
   interviewAnswerProgress as configInterviewProgress,
   interviewConfigSummary,
+  buildFixedQuestionQueue,
   nextFixedQuestion,
   openingQuestion,
+  questionRubric,
   shouldForceInterviewClosing as configShouldForceClosing,
   toInterviewConfigPayload,
 } from '../lib/interviewConfig'
@@ -54,10 +56,19 @@ import {
   liveAvatarVideoHealthy,
   stopLiveAvatarSession,
   getLiveAvatarLastError,
+  getLiveAvatarVideoElement,
   waitForLiveAvatarVideoReady,
   refreshLiveAvatarSession,
   resetLiveAvatarReconnectState,
 } from '../lib/liveavatarPlayer'
+import {
+  beginInterviewRecording,
+  buildRecordingBlob,
+  saveInterviewRecordingBlob,
+  startInterviewMediaRecorder,
+  stopMediaRecorder,
+  waitForRecorderStop,
+} from '../lib/interviewRecording'
 import { formatLiveAvatarError } from '../lib/liveavatarErrors'
 import { unlockAudioPlayback } from '../lib/audioUnlock'
 import {
@@ -95,7 +106,7 @@ import { profileFieldsKey } from '../lib/profileFieldsKey'
 import type { CandidateMatchWithTips } from '../lib/matching'
 import { scrollPageToTop } from '../lib/scrollPageToTop'
 import { getContentScrollContainer } from '../lib/smoothScroll'
-import type { CandidateStepId, FieldStatus, IntegrationSyncEvent, InterviewQuestion, InterviewTurn, ProfileTagGroup, UserRole, WorkExperienceEntry } from '../types'
+import type { CandidateStepId, FieldStatus, IntegrationSyncEvent, InterviewConfig, InterviewQuestion, InterviewTurn, ProfileTagGroup, UserRole, WorkExperienceEntry } from '../types'
 
 const CANDIDATE_NAV_ICONS: Record<string, LucideIcon> = {
   C1: FileUp,
@@ -133,6 +144,7 @@ interface LayoutProps {
   onStepChange: (step: string) => void
   onLogout: () => void
   integrationSyncs: IntegrationSyncEvent[]
+  applicationId?: string
   demoShortcut?: ReactNode
   children: ReactNode
 }
@@ -146,6 +158,7 @@ export function Layout({
   onStepChange,
   onLogout,
   integrationSyncs,
+  applicationId,
   demoShortcut,
   children,
 }: LayoutProps) {
@@ -240,6 +253,9 @@ export function Layout({
           <header className="topbar">
             <div className="topbar-title">
               <span className="topbar-role">{roleLabel}</span>
+              {applicationId ? (
+                <code className="topbar-app-id" title="Immutable application record ID">{applicationId}</code>
+              ) : null}
               <span className="topbar-step">{activeStepLabel}</span>
               {activeStepMeta && (
                 <span className="topbar-step-meta">
@@ -315,6 +331,7 @@ export function CandidatePortal() {
     hrInjectedQuestion, setHrInjectedQuestion,
     assessmentScore, setAssessmentScore,
     disqualifiedReason, finalReason,
+    applicationId, setCvUploadId, setInterviewRecording, ensureApplicationId,
     candidateStep: step, setCandidateStep: setStep, logout,
   } = useDemo()
 
@@ -352,6 +369,10 @@ export function CandidatePortal() {
   const prefetchRef = useRef<FollowUpPrefetch | null>(null)
   const lastAnswerSubmitRef = useRef({ at: 0, text: '' })
   const c4ResumeKeyRef = useRef('')
+  const interviewRecorderRef = useRef<MediaRecorder | null>(null)
+  const interviewRecordingChunksRef = useRef<Blob[]>([])
+  const interviewRecordingTracksRef = useRef<MediaStreamTrack[]>([])
+  const interviewRecordingStartedAtRef = useRef<number | null>(null)
   const [lastUploadInput, setLastUploadInput] = useState<{
     sampleId: string
     label: string
@@ -427,8 +448,60 @@ export function CandidatePortal() {
     return healthy
   }
 
+  function stopInterviewRecordingTracks() {
+    stopMediaRecorder(interviewRecorderRef.current, interviewRecordingTracksRef.current)
+    interviewRecorderRef.current = null
+    interviewRecordingTracksRef.current = []
+    interviewRecordingChunksRef.current = []
+    interviewRecordingStartedAtRef.current = null
+  }
+
+  async function startSessionRecording() {
+    stopInterviewRecordingTracks()
+    const videoEl = getLiveAvatarVideoElement()
+    const recorder = await startInterviewMediaRecorder({
+      videoEl,
+      onError: (message) => log('System', 'Session recording unavailable', message, 'C4'),
+    })
+    if (!recorder) return
+    interviewRecorderRef.current = recorder
+    interviewRecordingTracksRef.current = recorder.stream.getTracks()
+    interviewRecordingChunksRef.current = []
+    interviewRecordingStartedAtRef.current = Date.now()
+    beginInterviewRecording(recorder, interviewRecordingChunksRef.current)
+  }
+
+  async function persistInterviewRecording(turnCount: number) {
+    const recorder = interviewRecorderRef.current
+    const startedAt = interviewRecordingStartedAtRef.current ?? Date.now()
+    await waitForRecorderStop(recorder)
+    stopMediaRecorder(null, interviewRecordingTracksRef.current)
+    interviewRecorderRef.current = null
+    interviewRecordingTracksRef.current = []
+
+    const mimeType = recorder?.mimeType || 'video/webm'
+    const blob = buildRecordingBlob(interviewRecordingChunksRef.current, mimeType)
+    interviewRecordingChunksRef.current = []
+    if (!blob) return
+
+    const appId = ensureApplicationId()
+    const endedAt = Date.now()
+    const meta = {
+      applicationId: appId,
+      startedAt: new Date(startedAt).toISOString(),
+      endedAt: new Date(endedAt).toISOString(),
+      durationMs: endedAt - startedAt,
+      mimeType: blob.type || mimeType,
+      turnCount,
+      byteLength: blob.size,
+    }
+    await saveInterviewRecordingBlob(appId, blob, meta)
+    setInterviewRecording(meta)
+  }
+
   function restartInterview() {
     stopInterviewSpeech()
+    stopInterviewRecordingTracks()
     void stopLiveAvatarSession()
     c4ResumeKeyRef.current = ''
     setInterviewTurns([])
@@ -444,8 +517,17 @@ export function CandidatePortal() {
     log('Candidate', 'Interview restarted', 'Transcript cleared — ready for a fresh C4 session', 'C4')
   }
 
+  function stampInterviewTurn(turn: InterviewTurn): InterviewTurn {
+    const started = interviewRecordingStartedAtRef.current
+    return {
+      ...turn,
+      recordedAt: turn.recordedAt ?? new Date().toISOString(),
+      offsetMs: turn.offsetMs ?? (started != null ? Math.max(0, Date.now() - started) : undefined),
+    }
+  }
+
   function appendAvatarTurn(turn: InterviewTurn, add: boolean) {
-    if (add) setInterviewTurns((prev) => [...prev, turn])
+    if (add) setInterviewTurns((prev) => [...prev, stampInterviewTurn(turn)])
   }
 
   const interviewPhase = getInterviewUiPhase(
@@ -678,6 +760,8 @@ export function CandidatePortal() {
     setAppliedPreviewUrl(parsePreview.previewUrl)
     setAppliedPreviewKind(parsePreview.previewKind)
     adoptPreviewBlob(parsePreview.previewBlobUrl)
+    setCvUploadId(parsePreview.uploadId)
+    ensureApplicationId()
     setEvidenceLocate(null)
     setUploadExpanded(false)
     setUploadedSamples((current) => (
@@ -795,18 +879,18 @@ export function CandidatePortal() {
   }
 
   async function deliverInterviewClosing(closingText = DEFAULT_INTERVIEW_CLOSING) {
-    const turn: InterviewTurn = {
+    setInterviewClosingReady(true)
+    const turn = stampInterviewTurn({
       id: nextTurnId('close'),
       speaker: 'avatar',
       language: 'en',
       text: closingText,
       expression: 'supportive',
-    }
+    })
     const mode = await avatar.speakTurn(turn, { onTranscriptTurn: appendAvatarTurn })
     if (mode) {
       log('System', 'Avatar TTS', `closing; mode: ${mode}`, 'C4')
     }
-    setInterviewClosingReady(true)
     log('System', 'Adaptive interview closing', `${countCandidateAnswers(interviewTurns)} answers · orchestrator end`, 'C4')
   }
 
@@ -845,12 +929,12 @@ export function CandidatePortal() {
 
     try {
       await avatar.think(async () => {
-        const candidateTurn = {
+        const candidateTurn = stampInterviewTurn({
           id: nextTurnId('c-en'),
           speaker: 'candidate' as const,
           language: 'en' as const,
           text: trimmed,
-        }
+        })
         const updatedTurns = [...interviewTurns, candidateTurn]
         setInterviewTurns(updatedTurns)
         setCandidateAnswerEn('')
@@ -858,6 +942,7 @@ export function CandidatePortal() {
 
         if (configShouldForceClosing(interviewConfig, answerCount)) {
           forceClosing = true
+          setInterviewClosingReady(true)
           return
         }
 
@@ -899,7 +984,8 @@ export function CandidatePortal() {
       })
 
       if (forceClosing) {
-        await deliverInterviewClosing(closingText)
+        setInterviewClosingReady(true)
+        void deliverInterviewClosing(closingText)
         return
       }
       if (fixedQuestion) {
@@ -919,13 +1005,20 @@ export function CandidatePortal() {
   async function submitInterviewAndContinue() {
     stopInterviewSpeech()
     setPipeline({ interviewCompleted: true })
+    setInterviewClosingReady(true)
+    try {
+      await persistInterviewRecording(interviewTurns.length)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Recording save failed'
+      log('System', 'Interview recording save failed', message, 'C4')
+    }
     syncIntegration('jadarah.interviewRecord', 'C4', `${interviewTurns.length} turns recorded`)
     log('Candidate', 'Interview completed', 'Recording saved for HR review', 'C4')
     setStep('C5')
   }
 
   async function deliverConfiguredQuestion(question: InterviewQuestion) {
-    const turn: InterviewTurn = {
+    const turn = stampInterviewTurn({
       id: nextTurnId(question.source === 'jd' ? 'jd' : 'hr'),
       speaker: 'avatar',
       language: 'en',
@@ -936,7 +1029,7 @@ export function CandidatePortal() {
         questionSource: question.source,
         targetDimension: question.dimension,
       },
-    }
+    })
     setInterviewTurns((prev) => [...prev, turn])
     const prefetchedTts = avatarMode === 'liveavatar'
       ? null
@@ -952,7 +1045,7 @@ export function CandidatePortal() {
   }
 
   async function deliverAvatarFollowUp(followUp: FollowUpResult) {
-    const turn: InterviewTurn = {
+    const turn = stampInterviewTurn({
       id: nextTurnId('fu'),
       speaker: 'avatar',
       language: 'en',
@@ -964,7 +1057,7 @@ export function CandidatePortal() {
         targetDimension: followUp.targetDimension,
         questionSource: 'adaptive',
       },
-    }
+    })
     setInterviewTurns((prev) => [...prev, turn])
     const prefetchedTts = avatarMode === 'liveavatar'
       ? null
@@ -1009,8 +1102,9 @@ export function CandidatePortal() {
   function submitConfirmedProfile() {
     if (c1Submitting) return
     setC1Submitting(true)
+    ensureApplicationId()
     setPipeline({ profileSubmitted: true })
-    syncIntegration('jadarah.profileWrite', 'C1', 'Candidate profile after review')
+    syncIntegration('jadarah.profileWrite', 'C1', `Application ${applicationId || ensureApplicationId()} · profile after review`)
     log('Candidate', 'Profile submitted', 'Simulated Jadarah profile write-back after candidate review', 'C1')
     window.setTimeout(() => {
       setReviewReady(false)
@@ -1264,6 +1358,7 @@ export function CandidatePortal() {
         onStepChange={(s) => setStep(s as CandidateStepId)}
         onLogout={logout}
         integrationSyncs={integrationSyncs}
+        applicationId={applicationId}
       >
           <div ref={stepTopRef} className="step-scroll-anchor" aria-hidden="true" />
           {step === 'C1' && (
@@ -1283,6 +1378,21 @@ export function CandidatePortal() {
                 </ol>
                 <p className="c1-section-subtitle">{c1Subtitle}</p>
               </header>
+              {(pipeline.assessmentSubmitted || pipeline.profileSubmitted) && (
+                <div className="banner-warn">
+                  This browser already has an application in progress. You are on Apply so the walkthrough can start at CV upload.
+                  {' '}
+                  <button
+                    type="button"
+                    className="primary-outline"
+                    onClick={() => setStep(
+                      pipeline.interviewCompleted ? 'C5' : pipeline.assessmentSubmitted ? 'C4' : pipeline.diffAccepted ? 'C3' : 'C2',
+                    )}
+                  >
+                    Continue where I left off
+                  </button>
+                </div>
+              )}
 
               {c1Phase === 'upload' && (
                 <div
@@ -1509,8 +1619,6 @@ export function CandidatePortal() {
                     setInterviewStarted(false)
                     setInterviewClosingReady(false)
                     setCandidateAnswerEn('')
-                    setInterviewTurns([])
-                    setInterviewStarted(false)
                     setLiveAvatarReady(false)
                     avatar.setCaption('')
                     avatar.stop()
@@ -1527,11 +1635,23 @@ export function CandidatePortal() {
             <section className="stack">
               <header className="section-head">
                 <h1>AI interview</h1>
-                <p>HR-configured questions + adaptive follow-up · {interviewConfigSummary(interviewConfig)}</p>
+                <p>HR-configured questions + adaptive follow-up</p>
               </header>
               <div className="interview-config-banner card">
                 <strong>Interview blueprint (HR)</strong>
                 <p className="muted tiny">{interviewConfigSummary(interviewConfig)}</p>
+                <ol className="interview-queue-preview">
+                  {buildFixedQuestionQueue(interviewConfig).map((q, index) => {
+                    const rubric = questionRubric(interviewConfig, q.id)
+                    return (
+                      <li key={q.id}>
+                        <span className="interview-queue-tag">{q.source === 'jd' ? 'JD' : 'Custom'}</span>
+                        <span>{index + 1}. {q.textEn}</span>
+                        {rubric ? <em className="muted tiny"> Strong answer: {rubric}</em> : null}
+                      </li>
+                    )
+                  })}
+                </ol>
               </div>
               <div className="interview-steps card">
                 <span className={interviewClosingReady || pipeline.interviewCompleted ? 'done' : 'active'}>1. Adaptive Q&amp;A</span>
@@ -1579,6 +1699,7 @@ export function CandidatePortal() {
                             setInterviewStarted(false)
                             return
                           }
+                          await startSessionRecording()
                           const opening = openingQuestion(interviewConfig)
                           const mode = await avatar.speakTurn({
                             id: nextTurnId('g'),
@@ -1630,12 +1751,18 @@ export function CandidatePortal() {
                       {interviewPhase === 'english_answer' && (
                         <div className="stack">
                           <p className="muted tiny">
-                            Answer {interviewProgress.currentRound}
-                            {interviewProgress.answered < interviewProgress.minRequired
-                              ? ` · ${interviewProgress.minRequired}–${interviewProgress.maxAllowed} adaptive questions (minimum ${interviewProgress.minRequired} before wrap-up)`
-                              : ` · up to ${interviewProgress.maxAllowed} · AI may close when evidence is sufficient`}
-                            {interviewProgress.answered > 0 ? ' · contextual follow-up after each reply' : ''}
-                            {' · '}duplex — speak when ready; pause ~2s to submit your answer.
+                            {interviewProgress.atLimit
+                              ? `Maximum ${interviewProgress.maxAllowed} answers reached — submit to unlock scoring.`
+                              : (
+                                <>
+                                  Answer {interviewProgress.currentRound}
+                                  {interviewProgress.answered < interviewProgress.minRequired
+                                    ? ` · ${interviewProgress.minRequired}–${interviewProgress.maxAllowed} adaptive questions (minimum ${interviewProgress.minRequired} before wrap-up)`
+                                    : ` · up to ${interviewProgress.maxAllowed} · AI may close when evidence is sufficient`}
+                                  {interviewProgress.answered > 0 ? ' · contextual follow-up after each reply' : ''}
+                                  {' · '}duplex — speak when ready; pause ~2s to submit your answer.
+                                </>
+                              )}
                           </p>
                           <FreeMicPanel
                             active={!avatar.isConnecting}
@@ -1699,6 +1826,7 @@ export function CandidatePortal() {
                 interviewCompleted={pipeline.interviewCompleted}
                 jobTitle={FINANCE_JOB.title}
                 matchLoading={matchLoading}
+                interviewConfig={interviewConfig}
                 onContinue={() => setStep('C6')}
               />
             ) : (
@@ -1715,6 +1843,9 @@ export function CandidatePortal() {
           {step === 'C6' && (
             <section className="card">
               <h1>Application status</h1>
+              {applicationId && (
+                <p className="muted tiny">Record ID: <code className="queue-app-id">{applicationId}</code></p>
+              )}
               <ul className="status-list">
                 <li className="done">Profile submitted</li>
                 <li className="done">Assessment completed ({assessmentScore}%)</li>
@@ -1760,6 +1891,7 @@ interface CandidateScorePanelProps {
   interviewCompleted: boolean
   jobTitle?: string
   matchLoading?: boolean
+  interviewConfig: InterviewConfig
   onContinue: () => void
 }
 
@@ -1770,6 +1902,7 @@ function CandidateScorePanel({
   interviewCompleted,
   jobTitle = FINANCE_JOB.title,
   matchLoading = false,
+  interviewConfig,
   onContinue,
 }: CandidateScorePanelProps) {
   const { pillarWeights: weights, jdWeights } = useScoringWeights()
@@ -1785,8 +1918,12 @@ function CandidateScorePanel({
   const [reportLoading, setReportLoading] = useState(false)
 
   const assessmentKey = useMemo(
-    () => buildAssessmentKey({ assessmentScore, turns: interviewTurns }),
-    [assessmentScore, interviewTurns],
+    () => buildAssessmentKey({
+      assessmentScore,
+      turns: interviewTurns,
+      questionRubrics: interviewConfig.questionRubrics,
+    }),
+    [assessmentScore, interviewTurns, interviewConfig.questionRubrics],
   )
 
   useEffect(() => {
@@ -1803,6 +1940,7 @@ function CandidateScorePanel({
         assessmentScore,
         matchScore: cvScore,
         jobTitle,
+        interviewConfig: toInterviewConfigPayload(interviewConfig),
       }),
     )
       .then((report) => {
@@ -1818,7 +1956,7 @@ function CandidateScorePanel({
     return () => {
       active = false
     }
-  }, [assessmentKey, assessmentScore, cvScore, interviewCompleted, interviewTurns, jobTitle])
+  }, [assessmentKey, assessmentScore, cvScore, interviewCompleted, interviewTurns, interviewConfig, jobTitle])
 
   const interviewScore = useMemo(
     () =>

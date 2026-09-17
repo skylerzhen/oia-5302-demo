@@ -153,7 +153,7 @@ export function RoleSelect({ onSelect }: RoleSelectProps) {
             </div>
 
             <p className="tiny muted">
-              Demo progress is saved in this browser and shared across tabs.
+              Demo progress is saved in this browser and shared across tabs. Candidate sign-in always opens Apply (C1); use the sidebar to resume a later step, or Reset demo below to start empty.
             </p>
             <a
               className="portal-auth-link"

@@ -78,6 +78,8 @@ function normalizeWorkHistory(rawEntries = []) {
     const title = String(entry.title ?? entry.position ?? '').trim()
     const start = String(entry.start ?? '').trim()
     const end = String(entry.end ?? '').trim()
+    const industry = String(entry.industry ?? '').trim()
+    const location = String(entry.location ?? '').trim()
     const responsibilities = Array.isArray(entry.responsibilities)
       ? entry.responsibilities.map((r) => String(r).trim()).filter(Boolean)
       : []
@@ -89,12 +91,51 @@ function normalizeWorkHistory(rawEntries = []) {
       title,
       start,
       end,
+      industry,
+      location,
       responsibilities,
       status: hasContent ? status : 'missing',
       evidence: typeof entry.evidence === 'string' ? entry.evidence : '',
       source: typeof entry.source === 'string' ? entry.source : 'Experience section',
     }
   }).filter((entry) => entry.status !== 'missing' || entry.company || entry.title)
+}
+
+function workHistoryBlob(entry) {
+  return [entry.evidence, entry.source, entry.industry, entry.location, ...(entry.responsibilities ?? [])]
+    .filter(Boolean)
+    .join(' · ')
+}
+
+function syncCurrentRoleFromWorkHistory(fields, workHistory) {
+  const current = workHistory.find((entry) => /present|current/i.test(entry.end) || !entry.end) ?? workHistory[0]
+  if (!current) return fields
+
+  const blob = workHistoryBlob(current)
+  const industry = current.industry || blob.match(/Industry:\s*([^·\n|]+)/i)?.[1]?.trim() || ''
+  const location = current.location
+    || blob.match(/\b(Muscat(?:\s*,\s*Oman)?|Salalah|Sohar|Dubai|Abu Dhabi|Riyadh|Doha|London|UAE|Oman)\b/i)?.[0]
+    || fields.find((f) => f.key === 'address')?.value
+    || ''
+
+  const patch = {
+    companyName: current.company,
+    positionTitle: current.title,
+    industry,
+    location,
+  }
+
+  return fields.map((field) => {
+    const nextValue = patch[field.key]
+    if (!nextValue || field.value) return field
+    return {
+      ...field,
+      value: nextValue,
+      status: current.status ?? 'parsed',
+      evidence: current.evidence || `${current.title} — ${current.company}`,
+      source: current.source || 'Experience section',
+    }
+  })
 }
 
 function guardV1Certification(fields, body) {
@@ -115,12 +156,16 @@ function guardV1Certification(fields, body) {
 }
 
 export function normalizeCvParse(raw = {}, body = {}) {
-  const fields = guardV1Certification(normalizeScalarFields(raw.fields), body)
+  const workHistory = normalizeWorkHistory(raw.workHistory)
+  const fields = syncCurrentRoleFromWorkHistory(
+    guardV1Certification(normalizeScalarFields(raw.fields), body),
+    workHistory,
+  )
   return {
     fields,
     skills: normalizeTagGroup(raw.skills, 'Skills section'),
     languages: normalizeTagGroup(raw.languages, 'Languages section'),
-    workHistory: normalizeWorkHistory(raw.workHistory),
+    workHistory,
   }
 }
 

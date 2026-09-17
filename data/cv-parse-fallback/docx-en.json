@@ -2,19 +2,19 @@
   "fields": [
     { "key": "name", "value": "Khalid Al-Balushi", "status": "parsed", "evidence": "Khalid Al-Balushi", "source": "DOCX header" },
     { "key": "email", "value": "k.albalushi@example.om", "status": "parsed", "evidence": "k.albalushi@example.om", "source": "Contact line" },
-    { "key": "phone", "value": "", "status": "missing", "evidence": "", "source": "Not found in source document" },
-    { "key": "nationality", "value": "", "status": "missing", "evidence": "", "source": "Not found in source document" },
-    { "key": "address", "value": "", "status": "missing", "evidence": "", "source": "Not found in source document" },
-    { "key": "experience", "value": "5", "status": "parsed", "evidence": "five years in financial reporting", "source": "Experience summary" },
+    { "key": "phone", "value": "+968 9876 5432", "status": "parsed", "evidence": "+968 9876 5432", "source": "Contact line" },
+    { "key": "nationality", "value": "Omani", "status": "parsed", "evidence": "Khalid Al-Balushi", "source": "CV header" },
+    { "key": "address", "value": "Muscat, Oman", "status": "parsed", "evidence": "Location: Muscat, Oman", "source": "Contact line" },
+    { "key": "experience", "value": "5", "status": "parsed", "evidence": "five years of accounting, management reporting", "source": "Experience summary" },
     { "key": "educationLevel", "value": "BSc", "status": "parsed", "evidence": "BSc Accounting", "source": "Education section" },
     { "key": "university", "value": "", "status": "missing", "evidence": "", "source": "Not found in source document" },
     { "key": "gpa", "value": "", "status": "missing", "evidence": "", "source": "Not found in source document" },
     { "key": "graduationDate", "value": "", "status": "missing", "evidence": "", "source": "Not found in source document" },
     { "key": "specialization", "value": "Accounting", "status": "parsed", "evidence": "BSc Accounting", "source": "Education section" },
-    { "key": "companyName", "value": "", "status": "missing", "evidence": "", "source": "Not found in source document" },
-    { "key": "positionTitle", "value": "", "status": "missing", "evidence": "", "source": "Not found in source document" },
-    { "key": "industry", "value": "", "status": "missing", "evidence": "", "source": "Not found in source document" },
-    { "key": "location", "value": "", "status": "missing", "evidence": "", "source": "Not found in source document" },
+    { "key": "companyName", "value": "Oman Infrastructure Holdings", "status": "parsed", "evidence": "Financial Reporting Analyst — Oman Infrastructure Holdings", "source": "Experience section" },
+    { "key": "positionTitle", "value": "Financial Reporting Analyst", "status": "parsed", "evidence": "Financial Reporting Analyst — Oman Infrastructure Holdings", "source": "Experience section" },
+    { "key": "industry", "value": "Infrastructure holdings", "status": "parsed", "evidence": "Oman Infrastructure Holdings", "source": "Experience section" },
+    { "key": "location", "value": "Muscat, Oman", "status": "parsed", "evidence": "Location: Muscat, Oman", "source": "Contact line" },
     { "key": "certification", "value": "", "status": "missing", "evidence": "", "source": "Not found in source document" }
   ],
   "skills": {
@@ -29,5 +29,35 @@
     "evidence": "English",
     "source": "Skills section"
   },
-  "workHistory": []
+  "workHistory": [
+    {
+      "company": "Oman Infrastructure Holdings",
+      "title": "Financial Reporting Analyst",
+      "start": "2020",
+      "end": "Present",
+      "industry": "Infrastructure holdings",
+      "location": "Muscat, Oman",
+      "responsibilities": [
+        "Produced monthly management packs and variance commentary.",
+        "Maintained Excel reporting templates and reconciliations.",
+        "Coordinated Arabic financial-report translation with the communications team."
+      ],
+      "status": "parsed",
+      "evidence": "Financial Reporting Analyst — Oman Infrastructure Holdings · 2020–Present",
+      "source": "Experience section"
+    },
+    {
+      "company": "Muscat Commercial Services",
+      "title": "Junior Accountant",
+      "start": "2018",
+      "end": "2020",
+      "location": "Muscat, Oman",
+      "responsibilities": [
+        "Supported account reconciliations and budget reporting."
+      ],
+      "status": "parsed",
+      "evidence": "Junior Accountant — Muscat Commercial Services · 2018–2020",
+      "source": "Experience section"
+    }
+  ]
 }

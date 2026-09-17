@@ -43,12 +43,13 @@ function loadCvFallback(sampleId) {
   return JSON.parse(readFileSync(filePath, 'utf8'))
 }
 
-function resolveSampleId(fileName, isArabicScan) {
+function resolveKnownSampleId(fileName, isArabicScan) {
   if (isArabicScan) return 'pdf-scan'
-  const normalized = String(fileName).toLowerCase()
+  const normalized = String(fileName ?? '').toLowerCase()
   if (normalized.includes('noor') || normalized.includes('ar-scan') || normalized.includes('scan')) return 'pdf-scan'
-  if (normalized.endsWith('.docx')) return 'docx-en'
-  return 'pdf-en'
+  if (normalized.includes('khalid') || normalized.includes('02-khalid')) return 'docx-en'
+  if (normalized.includes('sara') || normalized.includes('01-sara')) return 'pdf-en'
+  return null
 }
 
 function wait(ms) {
@@ -67,14 +68,21 @@ async function handleLocalAi(request, response, pathname) {
   const payload = await readJson(request)
   if (pathname === '/api/local-ai/ocr/parse-cv') {
     const isArabicScan = Boolean(payload.isArabicScan)
-    const sampleId = payload.sampleId || resolveSampleId(payload.fileName, isArabicScan)
-    await wait(isArabicScan ? 900 : 650)
-    const parsed = ['pdf-en', 'docx-en', 'pdf-scan'].includes(sampleId)
-      ? loadCvFallback(sampleId)
-      : loadCvFallback('pdf-en')
+    const knownSampleId = ['pdf-en', 'docx-en', 'pdf-scan'].includes(payload.sampleId)
+      ? payload.sampleId
+      : resolveKnownSampleId(payload.fileName, isArabicScan)
+    if (!knownSampleId) {
+      return writeJson(response, 422, {
+        error: 'Unknown CV is not a controlled demo sample. Bind parsing to a named sample or fail closed.',
+        uploadId: payload.uploadId ?? null,
+        fileName: payload.fileName ?? null,
+      })
+    }
+    await wait(isArabicScan || knownSampleId === 'pdf-scan' ? 900 : 650)
+    const parsed = loadCvFallback(knownSampleId)
     return writeJson(response, 200, {
       mode: 'adapter-fallback',
-      sampleId,
+      sampleId: knownSampleId,
       fileName: payload.fileName,
       fileSize: payload.fileSize ?? null,
       ...parsed,

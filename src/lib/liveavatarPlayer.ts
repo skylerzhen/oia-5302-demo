@@ -601,3 +601,4 @@ export async function speakLiveAvatarOnce(text: string, signal?: AbortSignal): P
     speakInFlight = false
   }
 }
+

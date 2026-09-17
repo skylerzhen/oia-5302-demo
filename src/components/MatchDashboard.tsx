@@ -20,6 +20,7 @@ interface MatchDashboardProps {
   onViewJourney: (candidateId: string) => void
   jdWeights: JdDimensionWeight[]
   pipeline: PipelineStatus
+  applicationId: string
   assessmentScore: number
   interviewTurnCount: number
   interviewCompleted: boolean
@@ -56,6 +57,7 @@ export function MatchDashboard({
   onViewJourney,
   jdWeights,
   pipeline,
+  applicationId,
   assessmentScore,
   interviewTurnCount,
   interviewCompleted,
@@ -128,7 +130,11 @@ export function MatchDashboard({
                     >
                       <td>{idx + 1}</td>
                       <td><strong>{m.candidate.name}</strong></td>
-                      <td><code className="queue-app-id">{m.candidateId.replace('cand-', '').toUpperCase()}</code></td>
+                      <td>
+                        <code className="queue-app-id">
+                          {isLive && applicationId ? applicationId : m.candidateId.replace('cand-', '').toUpperCase()}
+                        </code>
+                      </td>
                       <td><span className={`status-pill ${stage.tone}`}>{stage.label}</span></td>
                       <td>
                         <div className="bar-cell">
@@ -138,7 +144,11 @@ export function MatchDashboard({
                       </td>
                       <td>{isLive && pipeline.profileSubmitted ? `${assessmentScore}%` : '-'}</td>
                       <td>{isLive && interviewTurnCount > 0 ? `${interviewTurnCount} turns` : '-'}</td>
-                      <td><span className={`status-pill ${qualified ? 'ok' : 'no'}`}>{qualified ? 'Qualified' : 'Below'}</span></td>
+                      <td>
+                        <span className={`status-pill ${qualified ? 'ok' : 'no'}`}>
+                          {qualified ? 'Qualified' : 'Below screening threshold'}
+                        </span>
+                      </td>
                     </tr>
                   )
                 })}

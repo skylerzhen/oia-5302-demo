@@ -133,7 +133,7 @@ export function interviewAvatarStatusMessage(
   switch (phase) {
     case 'connecting':
       return liveAvatarMode
-        ? '正在连接 LiveAvatar 视频（首次可能需要 30–60 秒，请勿关闭页面）…'
+        ? 'Connecting LiveAvatar video (first connect may take 30–60 seconds)…'
         : 'Preparing interview…'
     case 'thinking':
       return 'Generating follow-up…'

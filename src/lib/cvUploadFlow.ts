@@ -101,7 +101,8 @@ async function parseWithAdapter(input: {
   isScannedPdf: boolean
   documentText?: string
 }): Promise<CvParseResult> {
-  const profile = input.sampleId ? getCvParseProfile(input.sampleId) : undefined
+  const knownSample = input.sampleId && isKnownCvSampleId(input.sampleId) ? input.sampleId : undefined
+  const profile = knownSample ? getCvParseProfile(knownSample) : undefined
   const apiBase = import.meta.env.VITE_LLM_API_URL?.trim()
 
   if (!apiBase && profile) {
@@ -114,10 +115,16 @@ async function parseWithAdapter(input: {
     }
   }
 
+  if (!apiBase && !profile) {
+    throw new Error(
+      'This file is not a controlled demo sample. Upload Sara, Khalid, or Noor, or connect the document parser — parsing fails closed on unknown files.',
+    )
+  }
+
   try {
     return await localAi.parseCv({
       uploadId: input.uploadId,
-      sampleId: input.sampleId,
+      sampleId: knownSample,
       fileName: input.fileName,
       fileSize: input.fileSize,
       fileType: input.fileType,
@@ -185,6 +192,11 @@ export async function runCvUploadFlow(
     if (payload.fields.length === 0) {
       throw new Error('LLM returned no parsed CV fields')
     }
+    if (!controlledSampleId && parsed.mode === 'adapter-fallback') {
+      throw new Error(
+        'This file is not a controlled demo sample and local parse returned a fixture. Upload a named sample (Sara / Khalid / Noor) or connect the document parser.',
+      )
+    }
 
     onProgress({ stage: 'done', progress: 100, message: 'Ready for review' })
 
@@ -231,7 +243,7 @@ export async function runCvUploadFlow(
 function resolveSampleProfileId(fileName: string) {
   const normalized = fileName.toLowerCase()
   if (normalized.includes('noor') || normalized.includes('scan')) return 'pdf-scan'
-  if (normalized.includes('khalid') || normalized.endsWith('.docx')) return 'docx-en'
+  if (normalized.includes('khalid') || normalized.includes('02-khalid')) return 'docx-en'
   if (normalized.includes('sara') || normalized.includes('01-sara')) return 'pdf-en'
   return null
 }

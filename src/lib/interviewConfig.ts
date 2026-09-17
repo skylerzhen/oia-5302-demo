@@ -7,7 +7,8 @@ import { FINANCE_JOB } from '../data/job'
 import type { InterviewConfig, InterviewQuestion, InterviewTurn } from '../types'
 
 export const INTERVIEW_CONFIG_VERSION = '1'
-const STORAGE_KEY = 'oia5302-interview-config'
+export const INTERVIEW_CONFIG_STORAGE_KEY = 'oia5302-interview-config'
+const STORAGE_KEY = INTERVIEW_CONFIG_STORAGE_KEY
 
 export const DEFAULT_PROHIBITED_TOPICS = [
   'salary expectations',
@@ -35,12 +36,28 @@ export function defaultInterviewConfig(): InterviewConfig {
     minAnswers: 5,
     maxAnswers: 10,
     savedAt: new Date().toISOString(),
+    questionRubrics: {
+      'custom-opening': 'A strong answer names a specific mandate, the metric reviewed, and who received the output.',
+      'jd-portfolio-2': 'A strong answer explains a decision rule, a volatility trigger, and a control or limit that was respected.',
+      'jd-risk-1': 'A strong answer cites the audience, the risk metrics used, and how the report changed a decision.',
+      'jd-excel-1': 'A strong answer describes model structure (inputs / calc / outputs) and a control such as versioning or review.',
+    },
   }
+}
+
+function readInterviewConfigRaw(): string | null {
+  let raw = localStorage.getItem(STORAGE_KEY)
+  if (raw) return raw
+  const legacy = sessionStorage.getItem(STORAGE_KEY)
+  if (!legacy) return null
+  localStorage.setItem(STORAGE_KEY, legacy)
+  sessionStorage.removeItem(STORAGE_KEY)
+  return legacy
 }
 
 export function loadInterviewConfig(): InterviewConfig {
   try {
-    const raw = sessionStorage.getItem(STORAGE_KEY)
+    const raw = readInterviewConfigRaw()
     if (!raw) return defaultInterviewConfig()
     return normalizeInterviewConfig(JSON.parse(raw) as Partial<InterviewConfig>)
   } catch {
@@ -49,7 +66,7 @@ export function loadInterviewConfig(): InterviewConfig {
 }
 
 export function saveInterviewConfig(config: InterviewConfig) {
-  sessionStorage.setItem(STORAGE_KEY, JSON.stringify({
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({
     ...config,
     savedAt: new Date().toISOString(),
   }))
@@ -68,6 +85,7 @@ export function normalizeInterviewConfig(raw: Partial<InterviewConfig>): Intervi
         textAr: q.textAr?.trim() || undefined,
         dimension: q.dimension,
         source: q.source === 'jd' ? 'jd' as const : 'custom' as const,
+        strongAnswerRubric: q.strongAnswerRubric?.trim() || undefined,
       })).filter((q) => q.textEn.length > 0)
       : base.customQuestions,
     enabledJdQuestionIds: Array.isArray(raw.enabledJdQuestionIds)
@@ -82,6 +100,13 @@ export function normalizeInterviewConfig(raw: Partial<InterviewConfig>): Intervi
     minAnswers: clampInt(raw.minAnswers, 3, 8, base.minAnswers),
     maxAnswers: clampInt(raw.maxAnswers, 5, 15, base.maxAnswers),
     savedAt: raw.savedAt ?? base.savedAt,
+    questionRubrics: raw.questionRubrics && typeof raw.questionRubrics === 'object'
+      ? Object.fromEntries(
+        Object.entries(raw.questionRubrics)
+          .map(([id, text]) => [id, String(text).trim()])
+          .filter(([, text]) => text.length > 0),
+      )
+      : base.questionRubrics ?? {},
   }
 }
 
@@ -146,7 +171,8 @@ export function interviewAnswerProgress(config: InterviewConfig, turns: { speake
     answered,
     minRequired: config.minAnswers,
     maxAllowed: config.maxAnswers,
-    currentRound: answered + 1,
+    currentRound: answered >= config.maxAnswers ? config.maxAnswers : answered + 1,
+    atLimit: answered >= config.maxAnswers,
     fixedRemaining: Math.max(0, buildFixedQuestionQueue(config).length - countAvatarQuestions(turns as InterviewTurn[])),
   }
 }
@@ -156,7 +182,15 @@ export function interviewConfigSummary(config: InterviewConfig) {
   return `${fixed} fixed question${fixed === 1 ? '' : 's'} · adaptive up to ${config.maxAnswers} answers · ${config.followUpDimensions.length} follow-up dimensions`
 }
 
+export function questionRubric(config: InterviewConfig, questionId: string): string | undefined {
+  const fromMap = config.questionRubrics?.[questionId]?.trim()
+  if (fromMap) return fromMap
+  const custom = config.customQuestions.find((q) => q.id === questionId)
+  return custom?.strongAnswerRubric?.trim() || undefined
+}
+
 export function toInterviewConfigPayload(config: InterviewConfig) {
+  const queue = buildFixedQuestionQueue(config)
   return {
     version: config.version,
     jdQuestionSetId: config.jdQuestionSetId,
@@ -167,12 +201,18 @@ export function toInterviewConfigPayload(config: InterviewConfig) {
       textAr: q.textAr,
       dimension: q.dimension,
       source: q.source,
+      strongAnswerRubric: questionRubric(config, q.id),
     })),
     enabledJdQuestionIds: config.enabledJdQuestionIds,
     followUpDimensions: config.followUpDimensions,
     prohibitedTopics: config.prohibitedTopics,
     minAnswers: config.minAnswers,
     maxAnswers: config.maxAnswers,
-    fixedQuestionQueue: buildFixedQuestionQueue(config).map((q) => q.textEn),
+    fixedQuestionQueue: queue.map((q) => q.textEn),
+    questionRubrics: queue.map((q) => ({
+      questionId: q.id,
+      textEn: q.textEn,
+      strongAnswerRubric: questionRubric(config, q.id) ?? '',
+    })),
   }
 }

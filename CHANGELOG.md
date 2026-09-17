@@ -5,6 +5,19 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Versioning foll
 
 ## [Unreleased]
 
+### Added
+- UIS P0: one application record across Candidate / HR / Journey tabs (`applicationId` immutable; HR no longer auto-seeds over a live candidate)
+- HR interview blueprint (fixed queue, strong-answer rubrics, min/max, dimensions, prohibited topics) reaches C4 **and** server LLM follow-up / assessment prompts
+- C4 camera+mic recording to IndexedDB with H3 replay and evidence seek
+- `npm run build` CJK + UTF-8 encoding gate (`scripts/check-cjk.mjs`)
+- Unknown CV upload fail-closed; Khalid current-role company/title/industry/location projected from work history
+- Match label **Below screening threshold**; hire/reject require shortlist + written reason
+- Agent test playbook: [`docs/demo-5302/uis-p0-agent-test.md`](./docs/demo-5302/uis-p0-agent-test.md)
+
+### Fixed
+- UTF-16 LE source files (`interviewRecording.ts`, `pipelineHelpers.ts`, `check-cjk.mjs`) crashed the CJK gate with `SyntaxError`
+- Interview hard stop at max answers (`Maximum N answers reached — submit to unlock scoring`)
+
 ### Changed
 - Platform UI step 1-3: sovereign navy design tokens (Inter, Source Serif 4, IBM Plex Mono), 235px sidebar shell, Evidence Review card framing
 - Platform UI step 4: Candidate C5 Command Centre score panel with composite derivation, pillar KPIs, CV dimension evidence, and improvement tips

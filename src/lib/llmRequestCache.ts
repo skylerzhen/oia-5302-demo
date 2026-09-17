@@ -60,9 +60,11 @@ function writeStoredAssessment(key: string, result: AssessmentResult) {
 export function buildAssessmentKey(input: {
   assessmentScore: number
   turns: Array<{ id: string; text: string }>
+  questionRubrics?: unknown
 }) {
   const turnSig = input.turns.map((turn) => `${turn.id}:${turn.text.length}`).join(';')
-  return `${input.assessmentScore}|${turnSig}`
+  const rubricSig = input.questionRubrics == null ? '' : JSON.stringify(input.questionRubrics)
+  return `${input.assessmentScore}|${turnSig}|${rubricSig}`
 }
 
 export async function cachedLlmMatch(
